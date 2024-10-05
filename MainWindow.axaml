@@ -1,9 +1,24 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+        xmlns:vm="using:oChan"
         x:Class="oChan.MainWindow"
+        x:DataType="vm:MainWindow"
         Title="oChan">
-    Welcome to Avalonia!
+    <StackPanel Margin="10">
+        <!-- URL Input Section -->
+        <TextBlock Text="Enter 4chan Thread URL:" Margin="0,0,0,10"/>
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
+            <TextBox x:Name="UrlInput" Width="300" Watermark="Enter 4chan URL here..." />
+            <Button Content="Add to List" Margin="10,0,0,0" Width="120" Click="OnAddUrl"/>
+        </StackPanel>
+
+        <!-- DataGrid for displaying URL, images downloaded, and status -->
+        <DataGrid ItemsSource="{CompiledBinding UrlList}" AutoGenerateColumns="False" Margin="0,10,0,0">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="URL" Binding="{CompiledBinding Url}" Width="*" />
+                <DataGridTextColumn Header="Images" Binding="{CompiledBinding ImagesDownloaded}" Width="100" />
+                <DataGridTextColumn Header="Status" Binding="{CompiledBinding Status}" Width="100" />
+            </DataGrid.Columns>
+        </DataGrid>
+    </StackPanel>
 </Window>
