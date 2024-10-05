@@ -2,28 +2,38 @@ using Avalonia.Controls;
 using Avalonia.Interactivity;
 using System.Collections.ObjectModel;
 using System;
+using oChan.Downloaders;
+
+
 namespace oChan
 {
     public partial class MainWindow : Window
     {
-        // ObservableCollection to store the URL data and bind it to the DataGrid
-        public ObservableCollection<UrlInfo> UrlList { get; set; }
+        // ObservableCollection to store the Downloader objects and bind them to the DataGrid
+        public ObservableCollection<Downloader> UrlList { get; set; }
 
-public MainWindow()
-{
- 
-    // Initialize UrlList with sample data for testing
-    UrlList = new ObservableCollection<UrlInfo>
-    {
-        new UrlInfo { Url = "https://example.com/thread1", ImagesDownloaded = "5/10", Status = "Complete" },
-        new UrlInfo { Url = "https://example.com/thread2", ImagesDownloaded = "3/5", Status = "In Progress" },
-        new UrlInfo { Url = "https://example.com/thread3", ImagesDownloaded = "0/0", Status = "Idle" }
-    };
-       this.DataContext = this;
-    InitializeComponent();
+        // Registry to manage different downloader types
+        private Registry _Registry;
 
-}
+        public MainWindow()
+        {
 
+            // Initialize the registry and register downloaders
+            _Registry = new Registry();
+            _Registry.RegisterDownloader(new FourChanDownloader());
+
+            // Initialize the UrlList for the DataGrid
+            UrlList = new ObservableCollection<Downloader>
+            {
+                new FourChanDownloader { Url = "https://boards.4chan.org/thread1", Progress = "5/10", Status = "Complete" },
+                new FourChanDownloader { Url = "https://boards.4chan.org/thread2", Progress = "3/5", Status = "In Progress" },
+                new FourChanDownloader { Url = "https://boards.4chan.org/thread3", Progress = "0/0", Status = "Idle" }
+            };
+
+            this.DataContext = this;
+            InitializeComponent();
+
+        }
 
         // Event handler for Add to List button
         private void OnAddUrl(object sender, RoutedEventArgs e)
@@ -34,27 +44,16 @@ public MainWindow()
             // Check if the URL is not empty
             if (!string.IsNullOrEmpty(url))
             {
-                // Add a new UrlInfo object to the UrlList
-                UrlList.Add(new UrlInfo
+                var downloader = _Registry.HandleUrl(url);
+                if (downloader != null)
                 {
-                    Url = url,                // Assign the URL from the input
-                    ImagesDownloaded = "0/0", // Default value for images downloaded
-                    Status = "Idle"           // Default status as 'Idle'
-                });
-        foreach (var item in UrlList)
-        {
-            Console.WriteLine($"Url: {item.Url}, ImagesDownloaded: {item.ImagesDownloaded}, Status: {item.Status}");
-        }
+                    // Add the downloader to the list for display in the DataGrid
+                    UrlList.Add(downloader);
+                }
+
                 // Clear the input box after adding the URL
                 UrlInput.Text = string.Empty;
             }
         }
-    }
-
-    public class UrlInfo
-    {
-        public string Url { get; set; } = string.Empty; 
-        public string ImagesDownloaded { get; set; } = "0/0"; 
-        public string Status { get; set; } = "Idle";
     }
 }

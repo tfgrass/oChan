@@ -40,7 +40,7 @@
                                 <ColumnDefinition Width="100" />
                             </Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="{Binding Url}" />
-                            <TextBlock Grid.Column="1" Text="{Binding ImagesDownloaded}" />
+                            <TextBlock Grid.Column="1" Text="{Binding Progress}" />
                             <TextBlock Grid.Column="2" Text="{Binding Status}" />
                         </Grid>
                     </DataTemplate>
