@@ -7,7 +7,7 @@ namespace oChan.Downloaders
         // Check if the URL can be handled by this downloader (e.g., URL starts with "https://boards.4chan.org/")
         public override bool CanHandle(string url)
         {
-            return url.Contains("boards.4chan.org");
+            return url.Contains("https://boards.4chan.org/");
         }
 
         // Start the download process (you will implement the actual downloading logic here)
