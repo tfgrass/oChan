@@ -15,25 +15,38 @@ namespace oChan
         // Registry to manage different downloader types
         private Registry _Registry;
 
-        public MainWindow()
-        {
+public MainWindow()
+{
+    InitializeComponent();
+    
+    // Initialize the registry and register downloaders
+    _Registry = new Registry();
+    
+    var fourChanDownloader = new FourChanDownloader();
 
-            // Initialize the registry and register downloaders
-            _Registry = new Registry();
-            _Registry.RegisterDownloader(new FourChanDownloader());
+    // Set the delegate to handle UI updates
+    fourChanDownloader.UpdateUi = UpdateDownloaderInList;
 
-            // Initialize the UrlList for the DataGrid
-            UrlList = new ObservableCollection<Downloader>
-            {
-                new FourChanDownloader { Url = "https://boards.4chan.org/thread1", Progress = "5/10", Status = "Complete" },
-                new FourChanDownloader { Url = "https://boards.4chan.org/thread2", Progress = "3/5", Status = "In Progress" },
-                new FourChanDownloader { Url = "https://boards.4chan.org/thread3", Progress = "0/0", Status = "Idle" }
-            };
+    _Registry.RegisterDownloader(fourChanDownloader);
 
-            this.DataContext = this;
-            InitializeComponent();
+    // Initialize the UrlList for the DataGrid
+    UrlList = new ObservableCollection<Downloader>();
 
-        }
+    this.DataContext = this;
+}
+
+private void UpdateDownloaderInList(Downloader downloader)
+{
+    // Find the downloader in the list and refresh its properties
+    var index = UrlList.IndexOf(downloader);
+    if (index >= 0)
+    {
+        UrlList.RemoveAt(index);
+        UrlList.Insert(index, downloader); // Re-add to force UI update
+    }
+}
+
+
 
         // Event handler for Add to List button
         private void OnAddUrl(object sender, RoutedEventArgs e)
