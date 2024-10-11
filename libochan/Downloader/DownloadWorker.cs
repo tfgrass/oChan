@@ -3,6 +3,7 @@ using System.IO;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
+using oChan.Interfaces;
 using Serilog;
 
 namespace oChan.Downloader
@@ -44,7 +45,7 @@ namespace oChan.Downloader
                 response.EnsureSuccessStatusCode();
 
                 var directory = Path.GetDirectoryName(_downloadItem.DestinationPath);
-                if (!Directory.Exists(directory))
+                if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
                 {
                     Log.Debug("Creating directory {Directory}", directory);
                     Directory.CreateDirectory(directory);

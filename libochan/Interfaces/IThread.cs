@@ -1,6 +1,7 @@
 using System;
 using System.Threading.Tasks;
 using System.Collections.Generic;
+using System.ComponentModel;
 using oChan.Downloader;
 
 namespace oChan.Interfaces
@@ -8,7 +9,7 @@ namespace oChan.Interfaces
     /// <summary>
     /// Represents a specific thread within a board.
     /// </summary>
-    public interface IThread
+    public interface IThread : INotifyPropertyChanged
     {
         /// <summary>
         /// Gets the parent board.
@@ -21,9 +22,9 @@ namespace oChan.Interfaces
         string ThreadId { get; }
 
         /// <summary>
-        /// Gets the title or subject of the thread.
+        /// Gets or sets the title or subject of the thread.
         /// </summary>
-        string Title { get; }
+        string Title { get; set; }
 
         /// <summary>
         /// Gets a user-friendly name for the thread.
@@ -34,6 +35,21 @@ namespace oChan.Interfaces
         /// Gets the URI of the thread.
         /// </summary>
         Uri ThreadUri { get; }
+
+        /// <summary>
+        /// Gets or sets the status of the thread.
+        /// </summary>
+        string Status { get; set; }
+
+        /// <summary>
+        /// Gets the progress of media downloads.
+        /// </summary>
+        string Progress { get; }
+
+        /// <summary>
+        /// Gets the URL of the thread.
+        /// </summary>
+        string Url { get; }
 
         /// <summary>
         /// Archives the thread content based on the provided options.
