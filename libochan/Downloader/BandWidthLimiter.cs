@@ -23,7 +23,7 @@ namespace oChan.Downloader
             _maxBytesPerSecond = maxBytesPerSecond;
             _currentSecondStart = DateTime.UtcNow;
 
-            Log.Information("Initialized BandwidthLimiter with maxBytesPerSecond: {MaxBytesPerSecond}", _maxBytesPerSecond);
+            Log.Information("Initialized BandwidthLimiter with maxBytesPerSecond: {MaxBytesPerSecond} ({HumanReadableMaxBytesPerSecond})", _maxBytesPerSecond, Utils.ToHumanReadableSize(_maxBytesPerSecond));
         }
 
         public void UpdateMaxBytesPerSecond(long newMax)
@@ -34,13 +34,14 @@ namespace oChan.Downloader
                 throw new ArgumentException("Max bytes per second must be greater than zero.");
             }
 
-            Log.Information("Updating maxBytesPerSecond from {OldMax} to {NewMax}", _maxBytesPerSecond, newMax);
+            Log.Information("Updating maxBytesPerSecond from {OldMax} ({HumanReadableOldMax}) to {NewMax} ({HumanReadableNewMax})", 
+                _maxBytesPerSecond, Utils.ToHumanReadableSize(_maxBytesPerSecond), newMax, Utils.ToHumanReadableSize(newMax));
             _maxBytesPerSecond = newMax;
         }
 
         public async Task ThrottleAsync(int bytesDownloaded, CancellationToken cancellationToken)
         {
-            Log.Debug("ThrottleAsync called with bytesDownloaded: {BytesDownloaded}", bytesDownloaded);
+            Log.Debug("ThrottleAsync called with bytesDownloaded: {BytesDownloaded} ({HumanReadableBytesDownloaded})", bytesDownloaded, Utils.ToHumanReadableSize(bytesDownloaded));
 
             await _semaphore.WaitAsync(cancellationToken);
             try
@@ -56,7 +57,8 @@ namespace oChan.Downloader
                 }
 
                 _bytesDownloadedThisSecond += bytesDownloaded;
-                Log.Debug("Updated bytesDownloadedThisSecond: {BytesDownloadedThisSecond}", _bytesDownloadedThisSecond);
+                Log.Verbose("Updated bytesDownloadedThisSecond: {BytesDownloadedThisSecond} ({HumanReadableBytesDownloadedThisSecond})", 
+                    _bytesDownloadedThisSecond, Utils.ToHumanReadableSize(_bytesDownloadedThisSecond));
 
                 if (_bytesDownloadedThisSecond > _maxBytesPerSecond)
                 {
@@ -69,7 +71,7 @@ namespace oChan.Downloader
                     }
                     else
                     {
-                        Log.Debug("No delay required. Continuing without delay.");
+                        Log.Verbose("No delay required. Continuing without delay.");
                     }
                     // Reset counters after delay
                     _currentSecondStart = DateTime.UtcNow;
@@ -79,7 +81,7 @@ namespace oChan.Downloader
             finally
             {
                 _semaphore.Release();
-                Log.Debug("Semaphore released in ThrottleAsync.");
+                Log.Verbose("Semaphore released in ThrottleAsync.");
             }
         }
     }

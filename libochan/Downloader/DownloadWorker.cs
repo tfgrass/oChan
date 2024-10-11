@@ -56,9 +56,11 @@ namespace oChan.Downloader
 
                 Log.Debug("Beginning file copy to {DestinationPath}", _downloadItem.DestinationPath);
 
-                await CopyToAsync(contentStream, fileStream, 81920, cancellationToken);
+                var totalBytes = await CopyToAsync(contentStream, fileStream, 81920, cancellationToken);
 
-                Log.Information("Successfully downloaded {DownloadUri} to {DestinationPath}", _downloadItem.DownloadUri, _downloadItem.DestinationPath);
+                // Log the total size of the file in both bytes and human-readable format
+                Log.Information("Successfully downloaded {DownloadUri} to {DestinationPath}. File size: {TotalBytes} bytes ({HumanReadableTotalBytes})", 
+                    _downloadItem.DownloadUri, _downloadItem.DestinationPath, totalBytes, Utils.ToHumanReadableSize(totalBytes));
             }
             catch (Exception ex)
             {
@@ -67,7 +69,7 @@ namespace oChan.Downloader
             }
         }
 
-        private async Task CopyToAsync(Stream source, Stream destination, int bufferSize, CancellationToken cancellationToken)
+        private async Task<long> CopyToAsync(Stream source, Stream destination, int bufferSize, CancellationToken cancellationToken)
         {
             var buffer = new byte[bufferSize];
             int bytesRead;
@@ -78,10 +80,12 @@ namespace oChan.Downloader
                 await _bandwidthLimiter.ThrottleAsync(bytesRead, cancellationToken);
                 await destination.WriteAsync(buffer.AsMemory(0, bytesRead), cancellationToken);
 
-                totalBytes += bytesRead;
+                totalBytes += bytesRead; // Accumulate total bytes
             }
 
-            Log.Debug("Completed file copy of {TotalBytes} bytes to {DestinationPath}", totalBytes, _downloadItem.DestinationPath);
+            Log.Debug("Completed file copy. Total bytes copied: {TotalBytes} bytes", totalBytes);
+
+            return totalBytes; // Return total bytes for logging in ExecuteAsync
         }
     }
 }
