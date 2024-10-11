@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Serilog;
 using oChan.Boards;
 
 namespace oChan
@@ -8,6 +9,14 @@ namespace oChan
     {
         // Store singleton instances of downloaders in a dictionary
         private Dictionary<Type, Boards.Downloader> _registeredDownloaders = new();
+
+        public Registry()
+        {
+            Log.Logger = new LoggerConfiguration()
+                .MinimumLevel.Debug() // Set the minimum log level
+                .WriteTo.Console()    // Output logs to the console
+                .CreateLogger();
+        }
 
         // Register a new downloader in the registry (by instance)
         public void RegisterDownloader(Boards.Downloader downloader)
