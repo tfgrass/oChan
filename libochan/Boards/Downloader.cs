@@ -5,7 +5,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace oChan.Downloaders
+namespace oChan.Boards
 {
     public abstract class Downloader : INotifyPropertyChanged
     {

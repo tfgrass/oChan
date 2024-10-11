@@ -1,16 +1,16 @@
 using System;
 using System.Collections.Generic;
-using oChan.Downloaders;
+using oChan.Boards;
 
 namespace oChan
 {
     public class Registry
     {
         // Store singleton instances of downloaders in a dictionary
-        private Dictionary<Type, Downloader> _registeredDownloaders = new();
+        private Dictionary<Type, Boards.Downloader> _registeredDownloaders = new();
 
         // Register a new downloader in the registry (by instance)
-        public void RegisterDownloader(Downloader downloader)
+        public void RegisterDownloader(Boards.Downloader downloader)
         {
             var downloaderType = downloader.GetType();
 
@@ -23,7 +23,7 @@ namespace oChan
         }
 
         // Find a downloader that can handle the URL and enqueue the download
-        public Downloader? HandleUrl(string url)
+        public Boards.Downloader? HandleUrl(string url)
         {
             foreach (var downloader in _registeredDownloaders.Values)
             {

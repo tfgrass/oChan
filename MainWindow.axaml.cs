@@ -2,7 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Interactivity;
 using System.Collections.ObjectModel;
 using System;
-using oChan.Downloaders;
+using oChan.Boards;
 
 
 namespace oChan
@@ -10,7 +10,7 @@ namespace oChan
     public partial class MainWindow : Window
     {
         // ObservableCollection to store the Downloader objects and bind them to the DataGrid
-        public ObservableCollection<Downloader> UrlList { get; set; }
+        public ObservableCollection<Boards.Downloader> UrlList { get; set; }
 
         // Registry to manage different downloader types
         private Registry _Registry;
@@ -30,12 +30,12 @@ public MainWindow()
     _Registry.RegisterDownloader(fourChanDownloader);
 
     // Initialize the UrlList for the DataGrid
-    UrlList = new ObservableCollection<Downloader>();
+    UrlList = new ObservableCollection<Boards.Downloader>();
 
     this.DataContext = this;
 }
 
-private void UpdateDownloaderInList(Downloader downloader)
+private void UpdateDownloaderInList(Boards.Downloader downloader)
 {
     // Find the downloader in the list and refresh its properties
     var index = UrlList.IndexOf(downloader);

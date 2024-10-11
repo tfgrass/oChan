@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
 using oChan;
 
-namespace oChan.Downloaders
+namespace oChan.Boards
 {
     public class FourChanDownloader : Downloader
     {
