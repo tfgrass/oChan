@@ -74,9 +74,17 @@ namespace oChan.Boards.FourChan
                 {
                     if (string.IsNullOrWhiteSpace(post.Ext) || post.Tim == 0) continue; // Skip invalid images
 
+                    string mediaIdentifier = post.Tim.ToString();
+
+                    // Skip already downloaded media
+                    if (IsMediaDownloaded(mediaIdentifier)) 
+                    {
+                        Log.Debug("Skipping already downloaded media {MediaIdentifier} for thread {ThreadId}", mediaIdentifier, ThreadId);
+                        continue;
+                    }
+
                     string imageUrl = $"https://i.4cdn.org/{boardCode}/{post.Tim}{post.Ext}";
                     string destinationPath = Path.Combine("Downloads", boardCode, ThreadId, $"{post.Filename}{post.Ext}");
-                    string mediaIdentifier = post.Tim.ToString();
 
                     var downloadItem = new DownloadItem(new Uri(imageUrl), destinationPath, Board.ImageBoard, this, mediaIdentifier);
                     queue.EnqueueDownload(downloadItem);
@@ -88,6 +96,11 @@ namespace oChan.Boards.FourChan
             catch (Exception ex)
             {
                 Log.Error(ex, "Error enqueuing media downloads for thread {ThreadId}: {Message}", ThreadId, ex.Message);
+            }
+
+            if (DownloadedMediaCount == TotalMediaCount)
+            {
+                Status = "Finished"; // Set status to Finished if all media are downloaded
             }
         }
 

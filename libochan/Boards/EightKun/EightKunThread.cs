@@ -40,44 +40,40 @@ namespace oChan.Boards.EightKun
             {
                 Log.Debug("Enqueuing media downloads for thread {ThreadId}", ThreadId);
 
-                // Fetch thread HTML
                 var client = Board.ImageBoard.GetHttpClient();
                 HttpResponseMessage response = await client.GetAsync(ThreadUri);
                 response.EnsureSuccessStatusCode();
                 string htmlContent = await response.Content.ReadAsStringAsync();
 
-                // Parse the HTML using HtmlAgilityPack
                 var doc = new HtmlDocument();
                 doc.LoadHtml(htmlContent);
 
-                // XPath to find both "file" and "multifile" divs with links to media files
                 var imageNodes = doc.DocumentNode.SelectNodes("//div[contains(@class, 'file')]//a[contains(@href, 'media')]");
-
-                var uniqueImageUrls = new HashSet<string>(); // To ensure uniqueness
+                var uniqueImageUrls = new HashSet<string>();
 
                 if (imageNodes != null)
                 {
                     foreach (var node in imageNodes)
                     {
                         string imageUrl = node.GetAttributeValue("href", string.Empty);
-                        if (!string.IsNullOrWhiteSpace(imageUrl) && !uniqueImageUrls.Contains(imageUrl))
+                        string mediaIdentifier = ExtractMediaIdentifier(imageUrl);
+
+                        // Skip already downloaded media
+                        if (!IsMediaDownloaded(mediaIdentifier))
                         {
-                            uniqueImageUrls.Add(imageUrl);
                             string fileName = node.InnerText.Trim();
-                            string mediaIdentifier = ExtractMediaIdentifier(imageUrl);
+                            string destinationPath = Path.Combine("Downloads", Board.BoardCode, ThreadId, fileName);
 
-                            if (!string.IsNullOrWhiteSpace(fileName))
-                            {
-                                string destinationPath = Path.Combine("Downloads", Board.BoardCode, ThreadId, fileName);
-                                var downloadItem = new DownloadItem(new Uri(imageUrl), destinationPath, Board.ImageBoard, this, mediaIdentifier);
-
-                                queue.EnqueueDownload(downloadItem);
-                                Log.Debug("Enqueued download for image {ImageUrl}", imageUrl);
-                            }
+                            var downloadItem = new DownloadItem(new Uri(imageUrl), destinationPath, Board.ImageBoard, this, mediaIdentifier);
+                            queue.EnqueueDownload(downloadItem);
+                            Log.Debug("Enqueued download for image {ImageUrl}", imageUrl);
+                        }
+                        else
+                        {
+                            Log.Debug("Skipping already downloaded media {MediaIdentifier} for thread {ThreadId}", mediaIdentifier, ThreadId);
                         }
                     }
 
-                    // Update the total media count based on the unique URLs
                     TotalMediaCount = uniqueImageUrls.Count;
                 }
                 else
@@ -90,6 +86,11 @@ namespace oChan.Boards.EightKun
             catch (Exception ex)
             {
                 Log.Error(ex, "Error enqueuing media downloads for thread {ThreadId}: {Message}", ThreadId, ex.Message);
+            }
+
+            if (DownloadedMediaCount == TotalMediaCount)
+            {
+                Status = "Finished"; // Set status to "Finished" after recheck
             }
         }
 

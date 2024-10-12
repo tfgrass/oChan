@@ -41,7 +41,7 @@ namespace oChan.Downloader
 
         public async Task ThrottleAsync(int bytesDownloaded, CancellationToken cancellationToken)
         {
-            Log.Debug("ThrottleAsync called with bytesDownloaded: {BytesDownloaded} ({HumanReadableBytesDownloaded})", bytesDownloaded, Utils.ToHumanReadableSize(bytesDownloaded));
+            Log.Verbose("ThrottleAsync called with bytesDownloaded: {BytesDownloaded} ({HumanReadableBytesDownloaded})", bytesDownloaded, Utils.ToHumanReadableSize(bytesDownloaded));
 
             await _semaphore.WaitAsync(cancellationToken);
             try
