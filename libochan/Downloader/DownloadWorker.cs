@@ -61,13 +61,13 @@ namespace oChan.Downloader
                 Log.Information("Successfully downloaded {DownloadUri} to {DestinationPath}. File size: {TotalBytes} bytes ({HumanReadableTotalBytes})", 
                     _downloadItem.DownloadUri, _downloadItem.DestinationPath, totalBytes, Utils.ToHumanReadableSize(totalBytes));
 
-                // Notify the thread about the completed download
+                // Only mark as downloaded after the file is fully downloaded
                 _downloadItem.Thread.MarkMediaAsDownloaded(_downloadItem.MediaIdentifier);
             }
             catch (Exception ex)
             {
                 Log.Error(ex, "Error executing download for {DownloadUri}: {Message}", _downloadItem.DownloadUri, ex.Message);
-                throw; // Rethrow to allow calling code to handle exception
+                throw; // Rethrow to allow calling code to handle the exception
             }
         }
 
