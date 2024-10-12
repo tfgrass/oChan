@@ -89,7 +89,7 @@ namespace oChan.Boards.Base
             await Task.CompletedTask;
         }
 
-        public virtual async Task RecheckThreadAsync(DownloadQueue queue)
+        public virtual async Task checkThreadAsync(DownloadQueue queue)
         {
             Status = "Rechecking";
             Log.Information("Starting recheck for thread {ThreadId}", ThreadId);
@@ -199,7 +199,7 @@ namespace oChan.Boards.Base
                 Task.Run(async () =>
                 {
                     DownloadQueue queue = new DownloadQueue(5, 1024 * 1024); // Example queue
-                    await RecheckThreadAsync(queue);
+                    await checkThreadAsync(queue);
                 });
 
                 Log.Information("Starting rechecking for thread {ThreadId} with interval {IntervalInSeconds} seconds", ThreadId, intervalInSeconds);

@@ -34,7 +34,7 @@ namespace oChan.Boards.EightKun
 
       private bool _isRechecking = false;
 
-public override async Task RecheckThreadAsync(DownloadQueue queue)
+public override async Task checkThreadAsync(DownloadQueue queue)
 {
     if (_isRechecking)
     {
@@ -47,7 +47,7 @@ public override async Task RecheckThreadAsync(DownloadQueue queue)
     
     try
     {
-        await base.RecheckThreadAsync(queue);
+        await base.checkThreadAsync(queue);
 
         Log.Debug("Enqueuing media downloads for thread {ThreadId}", ThreadId);
 

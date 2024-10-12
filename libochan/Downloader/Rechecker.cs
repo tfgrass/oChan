@@ -34,7 +34,7 @@ namespace oChan.Downloader
                 try
                 {
                     DownloadQueue queue = new DownloadQueue(5, 1024 * 1024); // Example queue for rechecking
-                    await thread.RecheckThreadAsync(queue);
+                    await thread.checkThreadAsync(queue);
                     Log.Information("Rechecked thread {ThreadId}", thread.ThreadId);
                 }
                 catch (Exception ex)

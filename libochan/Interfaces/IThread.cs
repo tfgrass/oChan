@@ -88,7 +88,7 @@ namespace oChan.Interfaces
         /// </summary>
         /// <param name="queue">The downloader queue to enqueue downloads to.</param>
         /// <returns>A task representing the asynchronous operation.</returns>
-        Task RecheckThreadAsync(DownloadQueue queue);
+        Task checkThreadAsync(DownloadQueue queue);
 
         /// <summary>
         /// Loads the set of previously downloaded media from the filesystem (e.g., from .downloaded.json).

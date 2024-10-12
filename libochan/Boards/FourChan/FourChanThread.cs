@@ -34,11 +34,11 @@ namespace oChan.Boards.FourChan
         }
 
         [RequiresUnreferencedCode("dynamic json shit")]
-        public override async Task RecheckThreadAsync(DownloadQueue queue)
+        public override async Task checkThreadAsync(DownloadQueue queue)
         {
             // Update status to "Rechecking" at the start of the recheck
             Status = "Rechecking";
-            await base.RecheckThreadAsync(queue); 
+            await base.checkThreadAsync(queue); 
 
             Log.Debug("Enqueuing media downloads for thread {ThreadId}", ThreadId);
 
