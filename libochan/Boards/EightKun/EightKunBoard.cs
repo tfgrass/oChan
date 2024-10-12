@@ -4,7 +4,6 @@ using System;
 using System.Net.Http;
 using System.Threading.Tasks;
 using System.Collections.Generic;
-using System.Text.RegularExpressions;
 using Newtonsoft.Json.Linq;
 using oChan.Boards.Base;
 using oChan.Interfaces;
@@ -22,6 +21,7 @@ public class EightKunBoard : BaseBoard
     {
         ImageBoard = imageBoard ?? throw new ArgumentNullException(nameof(imageBoard));
         BoardUri = boardUri ?? throw new ArgumentNullException(nameof(boardUri));
+
         BoardCode = ExtractBoardCode(boardUri);
         Name = BoardCode;
         Log.Information("Initialized EightKunBoard for /{BoardCode}/", BoardCode);
@@ -65,10 +65,10 @@ public class EightKunBoard : BaseBoard
 
     private string ExtractBoardCode(Uri boardUri)
     {
-        Match match = Regex.Match(boardUri.AbsolutePath, @"^/(\w+)/?");
-        if (match.Success)
+        string[] segments = boardUri.AbsolutePath.Trim('/').Split('/');
+        if (segments.Length > 0)
         {
-            return match.Groups[1].Value;
+            return segments[0];
         }
         else
         {
@@ -77,4 +77,3 @@ public class EightKunBoard : BaseBoard
         }
     }
 }
-
