@@ -2,7 +2,8 @@ using System;
 using System.Collections.Generic;
 using Serilog;
 using oChan.Interfaces;
-using oChan.Boards.FourChan; // Include the namespace for FourChanImageBoard
+using oChan.Boards.FourChan;
+using oChan.Boards.EightKun; // Include the namespace for FourChanImageBoard
 
 namespace oChan
 {
@@ -29,6 +30,10 @@ namespace oChan
             // Create and register the FourChanImageBoard
             FourChanImageBoard fourChanImageBoard = new FourChanImageBoard();
             RegisterImageBoard(fourChanImageBoard);
+
+            // Register 8kun
+            EightKunImageBoard eightKunImageBoard = new EightKunImageBoard();
+            RegisterImageBoard(eightKunImageBoard);
 
             // If you have other image boards, register them here
             // var anotherImageBoard = new AnotherImageBoard();
