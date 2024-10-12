@@ -1,7 +1,8 @@
 namespace oChan.Boards.Base;
+
 using System;
-using System.Collections.Generic;
 using System.Threading.Tasks;
+using System.Collections.Generic;
 using oChan.Downloader;
 using oChan.Interfaces;
 using Serilog;
