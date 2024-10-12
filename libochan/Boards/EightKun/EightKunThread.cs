@@ -9,7 +9,8 @@ using oChan.Boards.Base;
 using oChan.Downloader;
 using oChan.Interfaces;
 using Serilog;
-using  System.Text.RegularExpressions;
+using System.Text.RegularExpressions;
+using Newtonsoft.Json.Linq;
 namespace oChan.Boards.EightKun
 {
     public class EightKunThread : BaseThread
@@ -31,91 +32,119 @@ namespace oChan.Boards.EightKun
             Log.Information("Initialized EightKunThread with ID: {ThreadId}", ThreadId);
         }
 
-        public override async Task RecheckThreadAsync(DownloadQueue queue)
+      private bool _isRechecking = false;
+
+public override async Task RecheckThreadAsync(DownloadQueue queue)
+{
+    if (_isRechecking)
+    {
+        Log.Warning("Recheck for thread {ThreadId} is already in progress. Skipping new recheck.", ThreadId);
+        return; // Prevent overlapping rechecks
+    }
+
+    _isRechecking = true; // Mark that a recheck is in progress
+    Status = "Rechecking"; // Update the status to "Rechecking"
+    
+    try
+    {
+        await base.RecheckThreadAsync(queue);
+
+        Log.Debug("Enqueuing media downloads for thread {ThreadId}", ThreadId);
+
+        HttpClient client = Board.ImageBoard.GetHttpClient();
+        string apiUrl = ThreadUri.ToString().Replace(".html", ".json");
+        HttpResponseMessage response = await client.GetAsync(apiUrl);
+        response.EnsureSuccessStatusCode();
+        string jsonContent = await response.Content.ReadAsStringAsync();
+
+        JObject threadData = JObject.Parse(jsonContent);
+
+        int previousTotalMediaCount = TotalMediaCount; // Preserve previous counts
+        int newMediaCount = 0;
+        HashSet<string> uniqueImageUrls = new HashSet<string>();
+
+        foreach (JToken post in threadData["posts"])
         {
-            Status = "Rechecking"; // Update the status to "Rechecking"
-            await base.RecheckThreadAsync(queue);
+            // Check for media files and extra files
+            newMediaCount += ProcessPostMedia(post, queue, uniqueImageUrls);
+        }
 
-            try
+        if (newMediaCount > 0)
+        {
+            TotalMediaCount = previousTotalMediaCount + newMediaCount;
+            Status = "Downloading"; // Only set to "Downloading" if new media is enqueued
+        }
+
+        Log.Information("Recheck complete for thread {ThreadId}: Enqueued {NewMediaCount} new media downloads", ThreadId, newMediaCount);
+    }
+    catch (Exception ex)
+    {
+        Log.Error(ex, "Error enqueuing media downloads for thread {ThreadId}: {Message}", ThreadId, ex.Message);
+    }
+    finally
+    {
+        _isRechecking = false; // Mark that the recheck is finished
+    }
+
+    // If all media has been downloaded, set the status to "Finished"
+    if (DownloadedMediaCount == TotalMediaCount && TotalMediaCount > 0)
+    {
+        Status = "Finished"; // Set status to "Finished" after recheck and download completion
+    }
+    else if (TotalMediaCount == 0)
+    {
+        Status = "No media found"; // Handle case where no media is found
+    }
+}
+
+private int ProcessPostMedia(JToken post, DownloadQueue queue, HashSet<string> uniqueImageUrls)
+{
+    int newMediaCount = 0;
+
+    if (post["tim"] != null && post["ext"] != null)
+    {
+        string mediaIdentifier = post["tim"].ToString();
+        string ext = post["ext"].ToString();
+        string imageUrl = $"https://media.128ducks.com/file_store/{mediaIdentifier}{ext}";
+
+        if (!IsMediaDownloaded(mediaIdentifier) && !uniqueImageUrls.Contains(imageUrl))
+        {
+            string fileName = $"{post["filename"]}{ext}";
+            string destinationPath = Path.Combine("Downloads", Board.BoardCode, ThreadId, fileName);
+
+            DownloadItem downloadItem = new DownloadItem(new Uri(imageUrl), destinationPath, Board.ImageBoard, this, mediaIdentifier);
+            queue.EnqueueDownload(downloadItem);
+            uniqueImageUrls.Add(imageUrl);
+            newMediaCount++;
+        }
+    }
+
+    // Handle extra files in the post
+    if (post["extra_files"] != null)
+    {
+        foreach (JToken extraFile in post["extra_files"])
+        {
+            string mediaIdentifier = extraFile["tim"].ToString();
+            string ext = extraFile["ext"].ToString();
+            string imageUrl = $"https://media.128ducks.com/file_store/{mediaIdentifier}{ext}";
+
+            if (!IsMediaDownloaded(mediaIdentifier) && !uniqueImageUrls.Contains(imageUrl))
             {
-                Log.Debug("Enqueuing media downloads for thread {ThreadId}", ThreadId);
+                string fileName = $"{extraFile["filename"]}{ext}";
+                string destinationPath = Path.Combine("Downloads", Board.BoardCode, ThreadId, fileName);
 
-                HttpClient client = Board.ImageBoard.GetHttpClient();
-                HttpResponseMessage response = await client.GetAsync(ThreadUri);
-                response.EnsureSuccessStatusCode();
-                string htmlContent = await response.Content.ReadAsStringAsync();
-
-                HtmlDocument doc = new HtmlDocument();
-                doc.LoadHtml(htmlContent);
-
-                HtmlNodeCollection imageNodes = doc.DocumentNode.SelectNodes("//div[contains(@class, 'file')]//a[contains(@href, 'media')]");
-
-                // Preserve the previous counts
-                int previousTotalMediaCount = TotalMediaCount;
-                int newMediaCount = 0;
-
-                HashSet<string> uniqueImageUrls = new HashSet<string>();
-
-                if (imageNodes != null)
-                {
-                    foreach (HtmlNode node in imageNodes)
-                    {
-                        string imageUrl = node.GetAttributeValue("href", string.Empty);
-                        string mediaIdentifier = ExtractMediaIdentifier(imageUrl);
-
-                        // Skip already downloaded media
-                        if (!IsMediaDownloaded(mediaIdentifier) && !uniqueImageUrls.Contains(imageUrl))
-                        {
-                            string fileName = node.InnerText.Trim();
-                            string destinationPath = Path.Combine("Downloads", Board.BoardCode, ThreadId, fileName);
-
-                            DownloadItem downloadItem = new DownloadItem(new Uri(imageUrl), destinationPath, Board.ImageBoard, this, mediaIdentifier);
-                            queue.EnqueueDownload(downloadItem);
-                            Log.Debug("Enqueued download for image {ImageUrl}", imageUrl);
-                            uniqueImageUrls.Add(imageUrl);
-                            newMediaCount++; // Increment new media count
-                        }
-                        else
-                        {
-                            Log.Debug("Skipping duplicate or already downloaded media {MediaIdentifier} for thread {ThreadId}", mediaIdentifier, ThreadId);
-                        }
-                    }
-
-                    // Update the total media count only if there are new items
-                    if (newMediaCount > 0)
-                    {
-                        TotalMediaCount = previousTotalMediaCount + newMediaCount;
-                        Status = "Downloading"; // Only set to "Downloading" if new media is enqueued
-                    }
-                }
-                else
-                {
-                    Log.Warning("No images found in thread {ThreadId}", ThreadId);
-                }
-
-                // Retain the previous media count if no new images are found
-                if (newMediaCount == 0)
-                {
-                    TotalMediaCount = previousTotalMediaCount; // Keep the previous total media count if no new media is found
-                }
-
-                Log.Information("Recheck complete for thread {ThreadId}: Enqueued {NewMediaCount} new media downloads", ThreadId, newMediaCount);
-            }
-            catch (Exception ex)
-            {
-                Log.Error(ex, "Error enqueuing media downloads for thread {ThreadId}: {Message}", ThreadId, ex.Message);
-            }
-
-            // If all media has been downloaded, set the status to "Finished"
-            if (DownloadedMediaCount == TotalMediaCount && TotalMediaCount > 0)
-            {
-                Status = "Finished"; // Set status to "Finished" after recheck and download completion
-            }
-            else if (TotalMediaCount == 0)
-            {
-                Status = "No media found"; // Handle case where no media is found
+                DownloadItem downloadItem = new DownloadItem(new Uri(imageUrl), destinationPath, Board.ImageBoard, this, mediaIdentifier);
+                queue.EnqueueDownload(downloadItem);
+                uniqueImageUrls.Add(imageUrl);
+                newMediaCount++;
             }
         }
+    }
+
+    return newMediaCount;
+}
+
+
 
 
 
