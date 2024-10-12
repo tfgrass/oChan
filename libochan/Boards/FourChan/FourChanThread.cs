@@ -8,6 +8,7 @@ using oChan.Downloader;
 using oChan.Interfaces;
 using Serilog;
 using Newtonsoft.Json.Linq;
+using System.Net.Http;
 
 namespace oChan.Boards.FourChan
 {
@@ -15,7 +16,7 @@ namespace oChan.Boards.FourChan
     {
         public override IBoard Board { get; }
         public override string ThreadId { get; }
-        public override string Title { get; set; } // Added set accessor
+        public override string Title { get; set; }
         public override string NiceName => $"{Title} ({ThreadId})";
         public override Uri ThreadUri { get; }
 
@@ -25,18 +26,16 @@ namespace oChan.Boards.FourChan
             ThreadUri = threadUri ?? throw new ArgumentNullException(nameof(threadUri));
 
             ThreadId = ExtractThreadId(threadUri);
-            Title = "Unknown"; // Will be fetched later
+            Title = "Unknown";
+            Status = "Pending";
             Log.Information("Initialized FourChanThread with ID: {ThreadId}", ThreadId);
         }
 
-        public override async Task ArchiveAsync(ArchiveOptions options)
+        public override async Task RecheckThreadAsync(DownloadQueue queue)
         {
-            Log.Information("Archiving thread {ThreadId} with options {Options}", ThreadId, options);
-            await EnqueueMediaDownloadsAsync(options.DownloadQueue);
-        }
+            // Call base class method for logging
+            await base.RecheckThreadAsync(queue); 
 
-        public override async Task EnqueueMediaDownloadsAsync(DownloadQueue queue)
-        {
             Log.Debug("Enqueuing media downloads for thread {ThreadId}", ThreadId);
 
             try
@@ -44,7 +43,7 @@ namespace oChan.Boards.FourChan
                 var client = Board.ImageBoard.GetHttpClient();
                 string boardCode = ((FourChanBoard)Board).BoardCode;
                 string threadJsonUrl = $"https://a.4cdn.org/{boardCode}/thread/{ThreadId}.json";
-                var response = await client.GetAsync(threadJsonUrl);
+                HttpResponseMessage response = await client.GetAsync(threadJsonUrl);
                 response.EnsureSuccessStatusCode();
 
                 var json = await response.Content.ReadAsStringAsync();
@@ -69,24 +68,26 @@ namespace oChan.Boards.FourChan
                         Filename = x.Value<string>("filename") ?? "unknown"
                     });
 
+                TotalMediaCount = postsWithImages.Count();
+
                 foreach (var post in postsWithImages)
                 {
                     if (string.IsNullOrWhiteSpace(post.Ext) || post.Tim == 0) continue; // Skip invalid images
 
                     string imageUrl = $"https://i.4cdn.org/{boardCode}/{post.Tim}{post.Ext}";
                     string destinationPath = Path.Combine("Downloads", boardCode, ThreadId, $"{post.Filename}{post.Ext}");
+                    string mediaIdentifier = post.Tim.ToString();
 
-                    var downloadItem = new DownloadItem(new Uri(imageUrl), destinationPath, Board.ImageBoard);
+                    var downloadItem = new DownloadItem(new Uri(imageUrl), destinationPath, Board.ImageBoard, this, mediaIdentifier);
                     queue.EnqueueDownload(downloadItem);
                     Log.Debug("Enqueued download for image {ImageUrl}", imageUrl);
                 }
 
-                Log.Information("Enqueued all media downloads for thread {ThreadId}", ThreadId);
+                Log.Information("Recheck complete for thread {ThreadId}: Enqueued all new media downloads", ThreadId);
             }
             catch (Exception ex)
             {
                 Log.Error(ex, "Error enqueuing media downloads for thread {ThreadId}: {Message}", ThreadId, ex.Message);
-                throw;
             }
         }
 

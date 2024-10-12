@@ -27,7 +27,7 @@ namespace oChan
         private void RegisterImageBoards()
         {
             // Create and register the FourChanImageBoard
-            var fourChanImageBoard = new FourChanImageBoard();
+            FourChanImageBoard fourChanImageBoard = new FourChanImageBoard();
             RegisterImageBoard(fourChanImageBoard);
 
             // If you have other image boards, register them here
@@ -44,7 +44,7 @@ namespace oChan
                 throw new ArgumentNullException(nameof(imageBoard));
             }
 
-            var imageBoardType = imageBoard.GetType();
+            Type imageBoardType = imageBoard.GetType();
 
             // Ensure the image board is only registered once
             if (!_registeredImageBoards.ContainsKey(imageBoardType))
@@ -78,14 +78,14 @@ namespace oChan
                 throw;
             }
 
-            foreach (var imageBoard in _registeredImageBoards.Values)
+            foreach (IImageBoard imageBoard in _registeredImageBoards.Values)
             {
                 if (imageBoard.CanHandle(uri))
                 {
                     Log.Debug("Image board {ImageBoardName} can handle URL: {Url}", imageBoard.GetType().Name, url);
 
                     // Get the thread from the image board
-                    var thread = imageBoard.GetThread(uri);
+                    IThread thread = imageBoard.GetThread(uri);
 
                     return thread;
                 }
@@ -104,7 +104,7 @@ namespace oChan
             }
             else
             {
-                foreach (var imageBoardType in _registeredImageBoards.Keys)
+                foreach (Type imageBoardType in _registeredImageBoards.Keys)
                 {
                     Log.Information("Registered image board: {ImageBoardName}", imageBoardType.Name);
                 }
