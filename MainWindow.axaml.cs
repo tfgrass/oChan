@@ -1,3 +1,5 @@
+// File Path: ./MainWindow.axaml.cs
+
 using System;
 using System.Threading.Tasks;
 using Avalonia.Controls;
@@ -6,16 +8,17 @@ using System.Collections.ObjectModel;
 using oChan.Downloader;
 using oChan.Interfaces;
 using Serilog;
+using Avalonia.Threading;
 
 namespace oChan
 {
     public partial class MainWindow : Window
     {
-        // ObservableCollection to store the IThread objects and bind them to the DataGrid
         public ObservableCollection<IThread> UrlList { get; set; }
+        public ObservableCollection<IBoard> BoardsList { get; set; }
 
-        // Registry to manage different image boards
         private Registry _Registry;
+        private DownloadQueue sharedDownloadQueue;
 
         public MainWindow()
         {
@@ -27,40 +30,67 @@ namespace oChan
             // Initialize the UrlList for the DataGrid
             UrlList = new ObservableCollection<IThread>();
 
+            // Initialize the BoardsList for the DataGrid
+            BoardsList = new ObservableCollection<IBoard>();
+
+            // Initialize shared download queue
+            sharedDownloadQueue = new DownloadQueue(5, 1024 * 1024 * 10); // Adjust as needed
+
+            // Set the DataContext for data binding
             this.DataContext = this;
+
+            // Wire up event handlers
+            var addUrlButton = this.FindControl<Button>("AddUrlButton");
+            addUrlButton.Click += OnAddUrl;
         }
 
-        // Event handler for Add to List button
+        // Event handler for Add button
         private async void OnAddUrl(object sender, RoutedEventArgs e)
         {
-            // Get the URL from the input box, ensuring it's not null
-            string url = UrlInput.Text ?? string.Empty;
+            // Get the URL from the input box
+            var urlInput = this.FindControl<TextBox>("UrlInput");
+            string url = urlInput.Text ?? string.Empty;
 
             // Check if the URL is not empty
             if (!string.IsNullOrEmpty(url))
             {
                 try
                 {
-                    IThread? thread = _Registry.HandleUrl(url);
+                    // First, try to get a thread
+                    IThread? thread = _Registry.GetThread(url);
                     if (thread != null)
                     {
                         // Add the thread to the list for display in the DataGrid
                         UrlList.Add(thread);
 
-                        // Initialize the ArchiveOptions with a shared DownloadQueue
+                        // Initialize the ArchiveOptions with the shared DownloadQueue
                         ArchiveOptions options = new ArchiveOptions
                         {
-                            DownloadQueue = new DownloadQueue(5, 1024 * 1024 * 10) // Adjust parallel downloads and bandwidth limit as needed
+                            DownloadQueue = sharedDownloadQueue
                         };
 
                         // Start the archive process asynchronously
                         await thread.ArchiveAsync(options);
-
-                        // The UI will update automatically due to data binding and INotifyPropertyChanged
                     }
                     else
                     {
-                        Log.Warning("No image board could handle the URL: {Url}", url);
+                        // If not a thread, try to get a board
+                        IBoard? board = _Registry.GetBoard(url);
+                        if (board != null)
+                        {
+                            // Subscribe to the ThreadDiscovered event
+                            board.ThreadDiscovered += OnThreadDiscovered;
+
+                            // Start monitoring the board every 60 seconds
+                            board.StartMonitoring(60);
+
+                            // Add the board to the list for display in the DataGrid
+                            BoardsList.Add(board);
+                        }
+                        else
+                        {
+                            Log.Warning("No image board could handle the URL: {Url}", url);
+                        }
                     }
                 }
                 catch (Exception ex)
@@ -70,8 +100,26 @@ namespace oChan
                 }
 
                 // Clear the input box after adding the URL
-                UrlInput.Text = string.Empty;
+                urlInput.Text = string.Empty;
             }
+        }
+
+        // Event handler for when a new thread is discovered
+        private void OnThreadDiscovered(object sender, ThreadEventArgs e)
+        {
+            // Ensure that updates to UrlList are made on the UI thread
+            Dispatcher.UIThread.Post(async () =>
+            {
+                // Add the new thread to your threads list
+                UrlList.Add(e.Thread);
+
+                // Start archiving the thread
+                ArchiveOptions options = new ArchiveOptions
+                {
+                    DownloadQueue = sharedDownloadQueue
+                };
+                await e.Thread.ArchiveAsync(options);
+            });
         }
     }
 }
