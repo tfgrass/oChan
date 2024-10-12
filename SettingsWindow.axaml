@@ -1,0 +1,12 @@
+<!-- File: SettingsWindow.axaml -->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="oChan.SettingsWindow"
+        Title="Settings"
+        Width="400" Height="300">
+    <StackPanel Margin="10">
+        <TextBlock Text="Settings" FontSize="24" FontWeight="Bold" HorizontalAlignment="Center" Margin="0,0,0,10"/>
+        <!-- Add your settings controls here -->
+        <Button Content="Close" Width="100" HorizontalAlignment="Center" Click="OnCloseButtonClick"/>
+    </StackPanel>
+</Window>

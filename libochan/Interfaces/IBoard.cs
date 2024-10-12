@@ -47,5 +47,22 @@ namespace oChan.Interfaces
         /// <param name="options">The archiving options.</param>
         /// <returns>A task representing the asynchronous operation.</returns>
         Task ArchiveAsync(ArchiveOptions options);
+
+        /// <summary>
+        /// Starts monitoring the board for new threads.
+        /// </summary>
+        /// <param name="intervalInSeconds">The interval in seconds between checks.</param>
+        void StartMonitoring(int intervalInSeconds);
+
+        /// <summary>
+        /// Stops monitoring the board.
+        /// </summary>
+        void StopMonitoring();
+
+        /// <summary>
+        /// Occurs when a new thread is discovered on the board.
+        /// </summary>
+        event EventHandler<ThreadEventArgs> ThreadDiscovered;
     }
 }
+
