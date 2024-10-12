@@ -1,4 +1,4 @@
-// File Path: ./MainWindow.axaml.cs
+// File: MainWindow.axaml.cs
 
 using System;
 using System.Threading.Tasks;
@@ -42,6 +42,13 @@ namespace oChan
             // Wire up event handlers
             var addUrlButton = this.FindControl<Button>("AddUrlButton");
             addUrlButton.Click += OnAddUrl;
+
+            // Wire up menu item event handlers
+            var settingsMenuItem = this.FindControl<MenuItem>("SettingsMenuItem");
+            settingsMenuItem.Click += OnSettingsMenuItemClick;
+
+            var aboutMenuItem = this.FindControl<MenuItem>("AboutMenuItem");
+            aboutMenuItem.Click += OnAboutMenuItemClick;
         }
 
         // Event handler for Add button
@@ -121,5 +128,21 @@ namespace oChan
                 await e.Thread.ArchiveAsync(options);
             });
         }
+
+        // Event handler for Settings menu item
+        // Event handler for Settings menu item
+        private void OnSettingsMenuItemClick(object sender, RoutedEventArgs e)
+        {
+            var settingsWindow = new SettingsWindow();
+            settingsWindow.ShowDialog(this);
+        }
+
+        // Event handler for About menu item
+        private void OnAboutMenuItemClick(object sender, RoutedEventArgs e)
+        {
+            var aboutWindow = new AboutWindow();
+            aboutWindow.ShowDialog(this);
+        }
+
     }
 }

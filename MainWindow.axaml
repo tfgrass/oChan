@@ -1,89 +1,44 @@
-<!-- File Path: ./MainWindow.axaml -->
-
+<!-- File: MainWindow.axaml -->
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="oChan.MainWindow"
         x:DataType="vm:MainWindow"
         xmlns:vm="clr-namespace:oChan"
         Title="oChan">
-    <StackPanel Margin="10">
-        <!-- URL Input Section -->
-        <TextBlock Text="Enter Thread or Board URL:" Margin="0,0,0,10"/>
-        <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
-            <TextBox x:Name="UrlInput" Width="300" Watermark="Enter URL here..." />
-            <Button x:Name="AddUrlButton" Content="Add" Margin="10,0,0,0" Width="120" />
+    <DockPanel>
+        <!-- Application Menu -->
+        <Menu DockPanel.Dock="Top">
+                <MenuItem x:Name="SettingsMenuItem" Header="_Settings" />
+                <MenuItem x:Name="AboutMenuItem" Header="_About" />
+        </Menu>
+
+        <!-- Main Content -->
+        <StackPanel Margin="10">
+            <!-- URL Input Section -->
+            <TextBlock Text="Enter Thread or Board URL:" Margin="0,0,0,10"/>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
+                <TextBox x:Name="UrlInput" Width="300" Watermark="Enter URL here..." />
+                <Button x:Name="AddUrlButton" Content="Add" Margin="10,0,0,0" Width="120" />
+            </StackPanel>
+
+            <!-- Tabs for Threads and Boards -->
+            <TabControl Margin="0,10,0,0">
+                <!-- Threads Tab -->
+                <TabItem Header="Threads">
+                    <StackPanel Margin="10">
+                        <!-- DataGrid for displaying Thread URL, Progress, and Status -->
+                        <!-- ... existing code ... -->
+                    </StackPanel>
+                </TabItem>
+
+                <!-- Boards Tab -->
+                <TabItem Header="Boards">
+                    <StackPanel Margin="10">
+                        <!-- DataGrid for displaying Board URLs -->
+                        <!-- ... existing code ... -->
+                    </StackPanel>
+                </TabItem>
+            </TabControl>
         </StackPanel>
-
-        <!-- Tabs for Threads and Boards -->
-        <TabControl Margin="0,10,0,0">
-            <!-- Threads Tab -->
-            <TabItem Header="Threads">
-                <StackPanel Margin="10">
-                    <!-- DataGrid for displaying Thread URL, Progress, and Status -->
-                    <Grid Margin="0,10,0,0">
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="*" />
-                        </Grid.RowDefinitions>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="400" />
-                            <ColumnDefinition Width="150" />
-                            <ColumnDefinition Width="150" />
-                        </Grid.ColumnDefinitions>
-
-                        <!-- Header Row -->
-                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Thread URL" FontWeight="Bold" />
-                        <TextBlock Grid.Row="0" Grid.Column="1" Text="Progress" FontWeight="Bold" />
-                        <TextBlock Grid.Row="0" Grid.Column="2" Text="Status" FontWeight="Bold" />
-
-                        <!-- Data Rows -->
-                        <ItemsControl Grid.Row="1" Grid.ColumnSpan="3" ItemsSource="{Binding UrlList}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="400" />
-                                            <ColumnDefinition Width="150" />
-                                            <ColumnDefinition Width="150" />
-                                        </Grid.ColumnDefinitions>
-                                        <TextBlock Grid.Column="0" Text="{Binding ThreadUri, Mode=OneWay}" />
-                                        <TextBlock Grid.Column="1" Text="{Binding Progress, Mode=OneWay}" />
-                                        <TextBlock Grid.Column="2" Text="{Binding Status, Mode=OneWay}" />
-                                    </Grid>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                    </Grid>
-                </StackPanel>
-            </TabItem>
-
-            <!-- Boards Tab -->
-            <TabItem Header="Boards">
-                <StackPanel Margin="10">
-                    <!-- DataGrid for displaying Board URLs -->
-                    <Grid Margin="0,10,0,0">
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="*" />
-                        </Grid.RowDefinitions>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="400" />
-                        </Grid.ColumnDefinitions>
-
-                        <!-- Header Row -->
-                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Board URL" FontWeight="Bold" />
-
-                        <!-- Data Rows -->
-                        <ItemsControl Grid.Row="1" Grid.Column="0" ItemsSource="{Binding BoardsList}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <TextBlock Text="{Binding BoardUri, Mode=OneWay}" />
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                    </Grid>
-                </StackPanel>
-            </TabItem>
-        </TabControl>
-    </StackPanel>
+    </DockPanel>
 </Window>
