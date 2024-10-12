@@ -1,0 +1,58 @@
+name: .NET Desktop Build and Release
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        runtime: [win-x64, linux-x64, osx-x64]
+    runs-on: ${{ matrix.runtime == 'win-x64' && 'windows-latest' || 'ubuntu-latest' }}
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup .NET SDK
+      uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: '8.0.x'  # Adjust if necessary
+
+    - name: Install ZIP (Linux/macOS)
+      if: runner.os != 'Windows'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y zip
+
+    - name: Restore dependencies
+      run: dotnet restore oChan.sln
+
+    - name: Publish self-contained single-file executable
+      run: |
+        dotnet publish oChan.sln --configuration Release --output ./publish/${{ matrix.runtime }} \
+          -p:PublishSingleFile=true \
+          -p:SelfContained=true \
+          -p:PublishTrimmed=true \
+          -r ${{ matrix.runtime }}
+
+    - name: Create ZIP archive (Windows)
+      if: runner.os == 'Windows'
+      run: |
+        cd ./publish/${{ matrix.runtime }}
+        Compress-Archive -Path * -DestinationPath ../../oChan-${{ matrix.runtime }}.zip
+
+    - name: Create ZIP archive (Linux/macOS)
+      if: runner.os != 'Windows'
+      run: |
+        cd ./publish/${{ matrix.runtime }}
+        zip -r ../../oChan-${{ matrix.runtime }}.zip *
+
+    - name: Upload ZIP artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: oChan-${{ matrix.runtime }}
+        path: ./publish/oChan-${{ matrix.runtime }}.zip
