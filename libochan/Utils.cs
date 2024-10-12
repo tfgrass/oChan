@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 
 namespace oChan
 {
@@ -15,6 +16,20 @@ namespace oChan
                 len /= 1024;
             }
             return $"{len:0.##} {sizes[order]}";
+        }
+    }
+        public static class PathSanitizer
+    {
+        public static string SanitizePath(string path)
+        {
+            // Remove invalid characters
+            var invalidChars = Path.GetInvalidPathChars();
+            foreach (var c in invalidChars)
+            {
+                path = path.Replace(c.ToString(), "");
+            }
+
+            return path;
         }
     }
 }

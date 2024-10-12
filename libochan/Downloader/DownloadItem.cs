@@ -44,8 +44,10 @@ namespace oChan.Downloader
                 throw new ArgumentNullException(nameof(mediaIdentifier));
             }
 
+            // Ensure that the path is properly formatted and sanitized
+            DestinationPath = PathSanitizer.SanitizePath(destinationPath);
+
             DownloadUri = downloadUri;
-            DestinationPath = destinationPath;
             ImageBoard = imageBoard;
             Thread = thread;
             MediaIdentifier = mediaIdentifier;

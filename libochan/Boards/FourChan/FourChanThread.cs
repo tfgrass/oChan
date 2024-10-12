@@ -33,7 +33,8 @@ namespace oChan.Boards.FourChan
 
         public override async Task RecheckThreadAsync(DownloadQueue queue)
         {
-            // Call base class method for logging
+            // Update status to "Rechecking" at the start of the recheck
+            Status = "Rechecking";
             await base.RecheckThreadAsync(queue); 
 
             Log.Debug("Enqueuing media downloads for thread {ThreadId}", ThreadId);
@@ -70,13 +71,26 @@ namespace oChan.Boards.FourChan
 
                 TotalMediaCount = postsWithImages.Count();
 
+                if (TotalMediaCount > 0)
+                {
+                    Status = "Downloading"; // Set status to "Downloading" if new images are being downloaded
+                }
+
                 foreach (var post in postsWithImages)
                 {
                     if (string.IsNullOrWhiteSpace(post.Ext) || post.Tim == 0) continue; // Skip invalid images
 
+                    string mediaIdentifier = post.Tim.ToString();
+
+                    // Skip already downloaded media
+                    if (IsMediaDownloaded(mediaIdentifier)) 
+                    {
+                        Log.Debug("Skipping already downloaded media {MediaIdentifier} for thread {ThreadId}", mediaIdentifier, ThreadId);
+                        continue;
+                    }
+
                     string imageUrl = $"https://i.4cdn.org/{boardCode}/{post.Tim}{post.Ext}";
                     string destinationPath = Path.Combine("Downloads", boardCode, ThreadId, $"{post.Filename}{post.Ext}");
-                    string mediaIdentifier = post.Tim.ToString();
 
                     var downloadItem = new DownloadItem(new Uri(imageUrl), destinationPath, Board.ImageBoard, this, mediaIdentifier);
                     queue.EnqueueDownload(downloadItem);
@@ -88,6 +102,12 @@ namespace oChan.Boards.FourChan
             catch (Exception ex)
             {
                 Log.Error(ex, "Error enqueuing media downloads for thread {ThreadId}: {Message}", ThreadId, ex.Message);
+            }
+
+            // Set status to "Finished" if all media has been downloaded
+            if (DownloadedMediaCount == TotalMediaCount)
+            {
+                Status = "Finished";
             }
         }
 

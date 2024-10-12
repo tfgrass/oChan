@@ -91,13 +91,19 @@ namespace oChan.Boards.Base
 
         public virtual async Task RecheckThreadAsync(DownloadQueue queue)
         {
-            Status = "Checking";
-            Log.Information("Starting check for thread {ThreadId}", ThreadId);
+            Status = "Rechecking";
+            Log.Information("Starting recheck for thread {ThreadId}", ThreadId);
 
             // This method is for logging purposes, and the actual checking will be done in the derived class
             await Task.CompletedTask;
 
-            Log.Information("Finished checking thread {ThreadId}", ThreadId);
+            // After rechecking, if no new downloads are added, set the status back to "Finished"
+            if (DownloadedMediaCount == TotalMediaCount)
+            {
+                Status = "Finished";
+            }
+
+            Log.Information("Finished rechecking thread {ThreadId}", ThreadId);
         }
 
         public virtual async Task EnqueueMediaDownloadsAsync(DownloadQueue queue)
@@ -190,11 +196,10 @@ namespace oChan.Boards.Base
             {
                 Log.Information("Starting immediate check for thread {ThreadId}", ThreadId);
 
-                // Immediately trigger the media download and rechecking
                 Task.Run(async () =>
                 {
                     var queue = new DownloadQueue(5, 1024 * 1024); // Example queue
-                    await RecheckThreadAsync(queue); // Trigger an immediate recheck
+                    await RecheckThreadAsync(queue);
                 });
 
                 Log.Information("Starting rechecking for thread {ThreadId} with interval {IntervalInSeconds} seconds", ThreadId, intervalInSeconds);
