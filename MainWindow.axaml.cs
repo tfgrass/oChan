@@ -48,14 +48,14 @@ namespace oChan
             {
                 try
                 {
-                    var thread = _Registry.HandleUrl(url);
+                    IThread thread = _Registry.HandleUrl(url);
                     if (thread != null)
                     {
                         // Add the thread to the list for display in the DataGrid
                         UrlList.Add(thread);
 
                         // Optionally, start the download or archive process
-                        var options = new ArchiveOptions();
+                        ArchiveOptions options = new ArchiveOptions();
                         await thread.ArchiveAsync(options);
 
                         // Update UI if necessary

@@ -6,6 +6,7 @@ using oChan.Boards.Base;
 using oChan.Interfaces;
 using Serilog;
 using Newtonsoft.Json;
+using System.Net.Http;
 
 namespace oChan.Boards.FourChan
 {
@@ -31,17 +32,17 @@ namespace oChan.Boards.FourChan
         public override async Task<IEnumerable<IThread>> GetThreadsAsync()
         {
             Log.Debug("Fetching threads for board /{BoardCode}/", BoardCode);
-            var threads = new List<IThread>();
+            List<IThread> threads = new List<IThread>();
 
             try
             {
-                var client = ImageBoard.GetHttpClient();
+                HttpClient client = ImageBoard.GetHttpClient();
                 string catalogUrl = $"https://a.4cdn.org/{BoardCode}/catalog.json";
-                var response = await client.GetAsync(catalogUrl);
+                HttpResponseMessage response = await client.GetAsync(catalogUrl);
                 response.EnsureSuccessStatusCode();
 
-                var json = await response.Content.ReadAsStringAsync();
-                var catalogData = JsonConvert.DeserializeObject<List<dynamic>>(json);
+                string json = await response.Content.ReadAsStringAsync();
+                List<dynamic> catalogData = JsonConvert.DeserializeObject<List<dynamic>>(json);
 
                 if (catalogData == null)
                 {
@@ -49,11 +50,11 @@ namespace oChan.Boards.FourChan
                     throw new Exception("Catalog data is null.");
                 }
 
-                foreach (var page in catalogData)
+                foreach (dynamic page in catalogData)
                 {
                     if (page.threads == null) continue;
 
-                    foreach (var thread in page.threads)
+                    foreach (dynamic thread in page.threads)
                     {
                         string threadId = thread.no.ToString();
                         Uri threadUri = new Uri($"https://boards.4chan.org/{BoardCode}/thread/{threadId}");
