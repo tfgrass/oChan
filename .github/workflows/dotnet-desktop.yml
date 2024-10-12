@@ -1,4 +1,4 @@
-name: .NET Desktop Build and Release
+name: .NET Core Desktop Build and Release
 
 on:
   push:
@@ -10,12 +10,15 @@ jobs:
   build:
     strategy:
       matrix:
-        runtime: [win-x64, linux-x64, osx-x64]
-    runs-on: ${{ matrix.runtime == 'win-x64' && 'windows-latest' || 'ubuntu-latest' }}
+        runtime: [win-x64, linux-x64, linux-arm64, osx-x64, osx-arm64]
+
+    runs-on: ${{ matrix.runtime == 'win-x64' && 'windows-latest' || (startsWith(matrix.runtime, 'linux') && 'ubuntu-latest') || 'macos-latest' }}
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
 
     - name: Setup .NET SDK
       uses: actions/setup-dotnet@v3
@@ -39,19 +42,21 @@ jobs:
           -p:PublishTrimmed=true \
           -r ${{ matrix.runtime }}
 
-    - name: Create ZIP archive (Windows)
+    # Zip the build output for Windows using PowerShell
+    - name: Zip output (Windows)
       if: runner.os == 'Windows'
       run: |
         cd ./publish/${{ matrix.runtime }}
         Compress-Archive -Path * -DestinationPath ../../oChan-${{ matrix.runtime }}.zip
 
-    - name: Create ZIP archive (Linux/macOS)
+    # Zip the build output for Linux/macOS using zip
+    - name: Zip output (Linux/macOS)
       if: runner.os != 'Windows'
       run: |
         cd ./publish/${{ matrix.runtime }}
-        zip -r ../../oChan-${{ matrix.runtime }}.zip *
+        zip -r ../../oChan-${{ matrix.runtime }}.zip .  # Create a zip file for the output
 
-    - name: Upload ZIP artifact
+    - name: Upload ZIP artifacts
       uses: actions/upload-artifact@v3
       with:
         name: oChan-${{ matrix.runtime }}
