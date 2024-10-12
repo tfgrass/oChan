@@ -44,14 +44,14 @@ namespace oChan.Boards.FourChan
             // Extract board code from the thread URI to create the board instance
             string boardPath = threadUri.AbsolutePath.Split("/thread")[0];
             Uri boardUri = new Uri($"https://boards.4chan.org{boardPath}");
-            var board = GetBoard(boardUri);
+            FourChanBoard board = (FourChanBoard)GetBoard(boardUri);
 
             return new FourChanThread(board, threadUri);
         }
 
         public override HttpClient GetHttpClient()
         {
-            var client = base.GetHttpClient();
+            HttpClient client = base.GetHttpClient();
             // Set a User-Agent to mimic a browser
             client.DefaultRequestHeaders.UserAgent.ParseAdd(
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +

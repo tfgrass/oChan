@@ -8,6 +8,7 @@ using oChan.Downloader;
 using oChan.Interfaces;
 using Serilog;
 using Newtonsoft.Json.Linq;
+using System.Net.Http;
 
 namespace oChan.Boards.FourChan
 {
@@ -44,7 +45,7 @@ namespace oChan.Boards.FourChan
                 var client = Board.ImageBoard.GetHttpClient();
                 string boardCode = ((FourChanBoard)Board).BoardCode;
                 string threadJsonUrl = $"https://a.4cdn.org/{boardCode}/thread/{ThreadId}.json";
-                var response = await client.GetAsync(threadJsonUrl);
+                HttpResponseMessage response = await client.GetAsync(threadJsonUrl);
                 response.EnsureSuccessStatusCode();
 
                 var json = await response.Content.ReadAsStringAsync();
