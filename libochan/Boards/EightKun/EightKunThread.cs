@@ -49,6 +49,11 @@ namespace oChan.Boards.EightKun
                 doc.LoadHtml(htmlContent);
 
                 var imageNodes = doc.DocumentNode.SelectNodes("//div[contains(@class, 'file')]//a[contains(@href, 'media')]");
+
+                // Preserve the previous counts
+                int previousTotalMediaCount = TotalMediaCount;
+                int newMediaCount = 0;
+
                 var uniqueImageUrls = new HashSet<string>();
 
                 if (imageNodes != null)
@@ -68,6 +73,7 @@ namespace oChan.Boards.EightKun
                             queue.EnqueueDownload(downloadItem);
                             Log.Debug("Enqueued download for image {ImageUrl}", imageUrl);
                             uniqueImageUrls.Add(imageUrl);
+                            newMediaCount++; // Increment new media count
                         }
                         else
                         {
@@ -75,20 +81,25 @@ namespace oChan.Boards.EightKun
                         }
                     }
 
-                    TotalMediaCount = uniqueImageUrls.Count;
-
-                    if (TotalMediaCount > 0)
+                    // Update the total media count only if there are new items
+                    if (newMediaCount > 0)
                     {
-                        Status = "Downloading"; // Update status to "Downloading" if new images are being downloaded
+                        TotalMediaCount = previousTotalMediaCount + newMediaCount;
+                        Status = "Downloading"; // Only set to "Downloading" if new media is enqueued
                     }
                 }
                 else
                 {
                     Log.Warning("No images found in thread {ThreadId}", ThreadId);
-                    TotalMediaCount = 0;
                 }
 
-                Log.Information("Recheck complete for thread {ThreadId}: Enqueued all new media downloads", ThreadId);
+                // Retain the previous media count if no new images are found
+                if (newMediaCount == 0)
+                {
+                    TotalMediaCount = previousTotalMediaCount; // Keep the previous total media count if no new media is found
+                }
+
+                Log.Information("Recheck complete for thread {ThreadId}: Enqueued {NewMediaCount} new media downloads", ThreadId, newMediaCount);
             }
             catch (Exception ex)
             {
@@ -96,11 +107,18 @@ namespace oChan.Boards.EightKun
             }
 
             // If all media has been downloaded, set the status to "Finished"
-            if (DownloadedMediaCount == TotalMediaCount)
+            if (DownloadedMediaCount == TotalMediaCount && TotalMediaCount > 0)
             {
                 Status = "Finished"; // Set status to "Finished" after recheck and download completion
             }
+            else if (TotalMediaCount == 0)
+            {
+                Status = "No media found"; // Handle case where no media is found
+            }
         }
+
+
+
 
         private string ExtractMediaIdentifier(string mediaUrl)
         {
