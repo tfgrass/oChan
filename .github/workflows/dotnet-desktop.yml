@@ -1,4 +1,4 @@
-name: .NET Core Desktop Build and Release
+name: .NET Desktop Build
 
 on:
   push:
@@ -12,52 +12,27 @@ jobs:
       matrix:
         runtime: [win-x64, linux-x64, linux-arm64, osx-x64, osx-arm64]
 
-    runs-on: ${{ matrix.runtime == 'win-x64' && 'windows-latest' || (startsWith(matrix.runtime, 'linux') && 'ubuntu-latest') || 'macos-latest' }}
+    runs-on: ${{ matrix.runtime == 'win-x64' && 'windows-latest' || startsWith(matrix.runtime, 'osx-') && 'macos-latest' || 'ubuntu-latest' }}
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
 
-    - name: Setup .NET SDK
+    - name: Setup .NET
       uses: actions/setup-dotnet@v3
       with:
-        dotnet-version: '8.0.x'  # Adjust if necessary
-
-    - name: Install ZIP (Linux/macOS)
-      if: runner.os != 'Windows'
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y zip
+        dotnet-version: '8.0.x'  # Match your project's target framework
 
     - name: Restore dependencies
-      run: dotnet restore oChan.sln
+      run: dotnet restore oChan.sln  # Reference your oChan solution file
 
     - name: Publish self-contained single-file executable
       run: |
-        dotnet publish oChan.sln --configuration Release --output ./publish/${{ matrix.runtime }} \
-          -p:PublishSingleFile=true \
-          -p:SelfContained=true \
-          -p:PublishTrimmed=true \
-          -r ${{ matrix.runtime }}
+        dotnet publish oChan.sln --configuration Release --output publish-output/${{ matrix.runtime }} -p:PublishSingleFile=true -p:SelfContained=true -p:PublishTrimmed=true -r ${{ matrix.runtime }}
 
-    # Zip the build output for Windows using PowerShell
-    - name: Zip output (Windows)
-      if: runner.os == 'Windows'
-      run: |
-        cd ./publish/${{ matrix.runtime }}
-        Compress-Archive -Path * -DestinationPath ../../oChan-${{ matrix.runtime }}.zip
-
-    # Zip the build output for Linux/macOS using zip
-    - name: Zip output (Linux/macOS)
-      if: runner.os != 'Windows'
-      run: |
-        cd ./publish/${{ matrix.runtime }}
-        zip -r ../../oChan-${{ matrix.runtime }}.zip .  # Create a zip file for the output
-
-    - name: Upload ZIP artifacts
+    - name: Upload build artifacts
       uses: actions/upload-artifact@v3
       with:
         name: oChan-${{ matrix.runtime }}
-        path: ./publish/oChan-${{ matrix.runtime }}.zip
+        path: publish-output/${{ matrix.runtime }}/
+        retention-days: 30
