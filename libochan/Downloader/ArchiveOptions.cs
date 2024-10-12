@@ -36,7 +36,7 @@ namespace oChan.Downloader
         {
             // Assign default values or make them configurable
             OutputDirectory = "Downloads"; // Default output directory
-            DownloadQueue = new DownloadQueue(5, 1024 * 1024); // Default settings for download queue
+            DownloadQueue = new DownloadQueue(5, 1024 * 1024*10); // Default settings for download queue, 10mb/s
         }
     }
 }

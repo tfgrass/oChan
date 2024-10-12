@@ -82,5 +82,24 @@ namespace oChan.Interfaces
         /// </summary>
         /// <param name="mediaIdentifier">The unique identifier of the media item.</param>
         void MarkMediaAsDownloaded(string mediaIdentifier);
+
+        /// <summary>
+        /// Rechecks the thread for new posts and updates the download queue with new media.
+        /// </summary>
+        /// <param name="queue">The downloader queue to enqueue downloads to.</param>
+        /// <returns>A task representing the asynchronous operation.</returns>
+        Task RecheckThreadAsync(DownloadQueue queue);
+
+        /// <summary>
+        /// Loads the set of previously downloaded media from the filesystem (e.g., from .downloaded.json).
+        /// </summary>
+        /// <returns>A task representing the asynchronous operation.</returns>
+        Task LoadDownloadedMediaAsync();
+
+        /// <summary>
+        /// Saves the set of downloaded media to the filesystem (e.g., to .downloaded.json).
+        /// </summary>
+        /// <returns>A task representing the asynchronous operation.</returns>
+        Task SaveDownloadedMediaAsync();
     }
 }

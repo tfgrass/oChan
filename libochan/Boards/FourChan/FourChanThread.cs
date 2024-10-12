@@ -31,17 +31,11 @@ namespace oChan.Boards.FourChan
             Log.Information("Initialized FourChanThread with ID: {ThreadId}", ThreadId);
         }
 
-        public override async Task ArchiveAsync(ArchiveOptions options)
+        public override async Task RecheckThreadAsync(DownloadQueue queue)
         {
-            Status = "Downloading";
+            // Call base class method for logging
+            await base.RecheckThreadAsync(queue); 
 
-            Log.Information("Archiving thread {ThreadId} with options {Options}", ThreadId, options);
-
-            await EnqueueMediaDownloadsAsync(options.DownloadQueue);
-        }
-
-        public override async Task EnqueueMediaDownloadsAsync(DownloadQueue queue)
-        {
             Log.Debug("Enqueuing media downloads for thread {ThreadId}", ThreadId);
 
             try
@@ -89,12 +83,11 @@ namespace oChan.Boards.FourChan
                     Log.Debug("Enqueued download for image {ImageUrl}", imageUrl);
                 }
 
-                Log.Information("Enqueued all media downloads for thread {ThreadId}", ThreadId);
+                Log.Information("Recheck complete for thread {ThreadId}: Enqueued all new media downloads", ThreadId);
             }
             catch (Exception ex)
             {
                 Log.Error(ex, "Error enqueuing media downloads for thread {ThreadId}: {Message}", ThreadId, ex.Message);
-                throw;
             }
         }
 
