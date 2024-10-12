@@ -91,18 +91,19 @@ namespace oChan.Boards.Base
 
         public virtual async Task RecheckThreadAsync(DownloadQueue queue)
         {
-            Status = "Checking";
-            Log.Information("Starting check for thread {ThreadId}", ThreadId);
+            Status = "Rechecking";
+            Log.Information("Starting recheck for thread {ThreadId}", ThreadId);
 
-            // Actual checking is done in derived classes
+            // This method is for logging purposes, and the actual checking will be done in the derived class
             await Task.CompletedTask;
 
+            // After rechecking, if no new downloads are added, set the status back to "Finished"
             if (DownloadedMediaCount == TotalMediaCount)
             {
-                Status = "Finished"; // Set status to Finished after recheck if no new media found
+                Status = "Finished";
             }
 
-            Log.Information("Finished checking thread {ThreadId}", ThreadId);
+            Log.Information("Finished rechecking thread {ThreadId}", ThreadId);
         }
 
         public virtual async Task EnqueueMediaDownloadsAsync(DownloadQueue queue)
@@ -120,6 +121,7 @@ namespace oChan.Boards.Base
 
         public void MarkMediaAsDownloaded(string mediaIdentifier)
         {
+            // Ensure that the media is not already in the downloaded set before adding
             if (!DownloadedMedia.Contains(mediaIdentifier) && DownloadedMedia.Add(mediaIdentifier))
             {
                 OnPropertyChanged(nameof(DownloadedMediaCount));
@@ -196,8 +198,8 @@ namespace oChan.Boards.Base
 
                 Task.Run(async () =>
                 {
-                    var queue = new DownloadQueue(5, 1024 * 1024); 
-                    await RecheckThreadAsync(queue); 
+                    var queue = new DownloadQueue(5, 1024 * 1024); // Example queue
+                    await RecheckThreadAsync(queue);
                 });
 
                 Log.Information("Starting rechecking for thread {ThreadId} with interval {IntervalInSeconds} seconds", ThreadId, intervalInSeconds);

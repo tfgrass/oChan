@@ -33,7 +33,7 @@ namespace oChan.Boards.EightKun
 
         public override async Task RecheckThreadAsync(DownloadQueue queue)
         {
-            // Call base class method for logging
+            Status = "Rechecking"; // Update the status to "Rechecking"
             await base.RecheckThreadAsync(queue);
 
             try
@@ -59,7 +59,7 @@ namespace oChan.Boards.EightKun
                         string mediaIdentifier = ExtractMediaIdentifier(imageUrl);
 
                         // Skip already downloaded media
-                        if (!IsMediaDownloaded(mediaIdentifier))
+                        if (!IsMediaDownloaded(mediaIdentifier) && !uniqueImageUrls.Contains(imageUrl))
                         {
                             string fileName = node.InnerText.Trim();
                             string destinationPath = Path.Combine("Downloads", Board.BoardCode, ThreadId, fileName);
@@ -67,18 +67,25 @@ namespace oChan.Boards.EightKun
                             var downloadItem = new DownloadItem(new Uri(imageUrl), destinationPath, Board.ImageBoard, this, mediaIdentifier);
                             queue.EnqueueDownload(downloadItem);
                             Log.Debug("Enqueued download for image {ImageUrl}", imageUrl);
+                            uniqueImageUrls.Add(imageUrl);
                         }
                         else
                         {
-                            Log.Debug("Skipping already downloaded media {MediaIdentifier} for thread {ThreadId}", mediaIdentifier, ThreadId);
+                            Log.Debug("Skipping duplicate or already downloaded media {MediaIdentifier} for thread {ThreadId}", mediaIdentifier, ThreadId);
                         }
                     }
 
                     TotalMediaCount = uniqueImageUrls.Count;
+
+                    if (TotalMediaCount > 0)
+                    {
+                        Status = "Downloading"; // Update status to "Downloading" if new images are being downloaded
+                    }
                 }
                 else
                 {
                     Log.Warning("No images found in thread {ThreadId}", ThreadId);
+                    TotalMediaCount = 0;
                 }
 
                 Log.Information("Recheck complete for thread {ThreadId}: Enqueued all new media downloads", ThreadId);
@@ -88,15 +95,15 @@ namespace oChan.Boards.EightKun
                 Log.Error(ex, "Error enqueuing media downloads for thread {ThreadId}: {Message}", ThreadId, ex.Message);
             }
 
+            // If all media has been downloaded, set the status to "Finished"
             if (DownloadedMediaCount == TotalMediaCount)
             {
-                Status = "Finished"; // Set status to "Finished" after recheck
+                Status = "Finished"; // Set status to "Finished" after recheck and download completion
             }
         }
 
         private string ExtractMediaIdentifier(string mediaUrl)
         {
-            // Extract the unique identifier for media (e.g., the file hash or part of the URL)
             var match = System.Text.RegularExpressions.Regex.Match(mediaUrl, @"file_store/(\w+)");
             return match.Success ? match.Groups[1].Value : Guid.NewGuid().ToString();
         }

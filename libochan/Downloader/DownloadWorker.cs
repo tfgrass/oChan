@@ -37,6 +37,13 @@ namespace oChan.Downloader
         {
             try
             {
+                if (_downloadItem.Thread.IsMediaDownloaded(_downloadItem.MediaIdentifier))
+                {
+                    Log.Information("Media {MediaIdentifier} already downloaded for thread {ThreadId}, skipping download.", 
+                        _downloadItem.MediaIdentifier, _downloadItem.Thread.ThreadId);
+                    return;
+                }
+
                 Log.Debug("Starting execution of DownloadWorker for {DownloadUri}", _downloadItem.DownloadUri);
 
                 var httpClient = _downloadItem.ImageBoard.GetHttpClient();
@@ -61,13 +68,12 @@ namespace oChan.Downloader
                 Log.Information("Successfully downloaded {DownloadUri} to {DestinationPath}. File size: {TotalBytes} bytes ({HumanReadableTotalBytes})", 
                     _downloadItem.DownloadUri, _downloadItem.DestinationPath, totalBytes, Utils.ToHumanReadableSize(totalBytes));
 
-                // Only mark as downloaded after the file is fully downloaded
                 _downloadItem.Thread.MarkMediaAsDownloaded(_downloadItem.MediaIdentifier);
             }
             catch (Exception ex)
             {
                 Log.Error(ex, "Error executing download for {DownloadUri}: {Message}", _downloadItem.DownloadUri, ex.Message);
-                throw; // Rethrow to allow calling code to handle the exception
+                throw;
             }
         }
 

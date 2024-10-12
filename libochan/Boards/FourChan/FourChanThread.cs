@@ -33,7 +33,8 @@ namespace oChan.Boards.FourChan
 
         public override async Task RecheckThreadAsync(DownloadQueue queue)
         {
-            // Call base class method for logging
+            // Update status to "Rechecking" at the start of the recheck
+            Status = "Rechecking";
             await base.RecheckThreadAsync(queue); 
 
             Log.Debug("Enqueuing media downloads for thread {ThreadId}", ThreadId);
@@ -70,6 +71,11 @@ namespace oChan.Boards.FourChan
 
                 TotalMediaCount = postsWithImages.Count();
 
+                if (TotalMediaCount > 0)
+                {
+                    Status = "Downloading"; // Set status to "Downloading" if new images are being downloaded
+                }
+
                 foreach (var post in postsWithImages)
                 {
                     if (string.IsNullOrWhiteSpace(post.Ext) || post.Tim == 0) continue; // Skip invalid images
@@ -98,9 +104,10 @@ namespace oChan.Boards.FourChan
                 Log.Error(ex, "Error enqueuing media downloads for thread {ThreadId}: {Message}", ThreadId, ex.Message);
             }
 
+            // Set status to "Finished" if all media has been downloaded
             if (DownloadedMediaCount == TotalMediaCount)
             {
-                Status = "Finished"; // Set status to Finished if all media are downloaded
+                Status = "Finished";
             }
         }
 
