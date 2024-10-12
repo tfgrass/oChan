@@ -1,49 +1,113 @@
 using System;
 using System.Collections.Generic;
-using oChan.Downloaders;
+using Serilog;
+using oChan.Interfaces;
+using oChan.Boards.FourChan; // Include the namespace for FourChanImageBoard
 
 namespace oChan
 {
     public class Registry
     {
-        // Store singleton instances of downloaders in a dictionary
-        private Dictionary<Type, Downloader> _registeredDownloaders = new();
+        // Store singleton instances of image boards in a dictionary
+        private readonly Dictionary<Type, IImageBoard> _registeredImageBoards = new();
 
-        // Register a new downloader in the registry (by instance)
-        public void RegisterDownloader(Downloader downloader)
+        public Registry()
         {
-            var downloaderType = downloader.GetType();
+            Log.Logger = new LoggerConfiguration()
+                .MinimumLevel.Debug() // Set the minimum log level
+                .WriteTo.Console()    // Output logs to the console
+                .CreateLogger();
 
-            // Ensure the downloader is only registered once
-            if (!_registeredDownloaders.ContainsKey(downloaderType))
+            Log.Information("Registry initialized with logging configured.");
+
+            // Register image boards here
+            RegisterImageBoards();
+        }
+
+        private void RegisterImageBoards()
+        {
+            // Create and register the FourChanImageBoard
+            var fourChanImageBoard = new FourChanImageBoard();
+            RegisterImageBoard(fourChanImageBoard);
+
+            // If you have other image boards, register them here
+            // var anotherImageBoard = new AnotherImageBoard();
+            // RegisterImageBoard(anotherImageBoard);
+        }
+
+        // Register a new image board in the registry (by instance)
+        private void RegisterImageBoard(IImageBoard imageBoard)
+        {
+            if (imageBoard == null)
             {
-                _registeredDownloaders[downloaderType] = downloader;
-                Console.WriteLine($"Registered {downloaderType.Name}.");
+                Log.Error("Attempted to register a null image board.");
+                throw new ArgumentNullException(nameof(imageBoard));
+            }
+
+            var imageBoardType = imageBoard.GetType();
+
+            // Ensure the image board is only registered once
+            if (!_registeredImageBoards.ContainsKey(imageBoardType))
+            {
+                _registeredImageBoards[imageBoardType] = imageBoard;
+                Log.Information("Registered image board: {ImageBoardName}", imageBoardType.Name);
+            }
+            else
+            {
+                Log.Warning("Image board {ImageBoardName} is already registered.", imageBoardType.Name);
             }
         }
 
-        // Find a downloader that can handle the URL and enqueue the download
-        public Downloader? HandleUrl(string url)
+        // Find an image board that can handle the URL and return the IThread
+        public IThread? HandleUrl(string url)
         {
-            foreach (var downloader in _registeredDownloaders.Values)
+            if (string.IsNullOrWhiteSpace(url))
             {
-                if (downloader.CanHandle(url))
+                Log.Error("URL is null or empty.");
+                throw new ArgumentNullException(nameof(url));
+            }
+
+            Uri uri;
+            try
+            {
+                uri = new Uri(url);
+            }
+            catch (UriFormatException ex)
+            {
+                Log.Error(ex, "Invalid URL format: {Url}", url);
+                throw;
+            }
+
+            foreach (var imageBoard in _registeredImageBoards.Values)
+            {
+                if (imageBoard.CanHandle(uri))
                 {
-                    downloader.QueueDownload(url); // Use the queuing method from the downloader
-                    return downloader;
+                    Log.Debug("Image board {ImageBoardName} can handle URL: {Url}", imageBoard.GetType().Name, url);
+
+                    // Get the thread from the image board
+                    var thread = imageBoard.GetThread(uri);
+
+                    return thread;
                 }
             }
 
-            Console.WriteLine($"No downloader found for URL: {url}");
+            Log.Warning("No image board found for URL: {Url}", url);
             return null;
         }
 
-        // List all registered downloaders
-        public void ListDownloaders()
+        // List all registered image boards
+        public void ListImageBoards()
         {
-            foreach (var downloaderType in _registeredDownloaders.Keys)
+            if (_registeredImageBoards.Count == 0)
             {
-                Console.WriteLine($"Registered downloader: {downloaderType.Name}");
+                Log.Information("No image boards registered.");
+            }
+            else
+            {
+                foreach (var imageBoardType in _registeredImageBoards.Keys)
+                {
+                    Log.Information("Registered image board: {ImageBoardName}", imageBoardType.Name);
+                }
             }
         }
     }
