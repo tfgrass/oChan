@@ -16,7 +16,7 @@ namespace oChan.Boards.FourChan
     {
         public override IBoard Board { get; }
         public override string ThreadId { get; }
-        public override string Title { get; set; } // Added set accessor
+        public override string Title { get; set; }
         public override string NiceName => $"{Title} ({ThreadId})";
         public override Uri ThreadUri { get; }
 
@@ -26,13 +26,17 @@ namespace oChan.Boards.FourChan
             ThreadUri = threadUri ?? throw new ArgumentNullException(nameof(threadUri));
 
             ThreadId = ExtractThreadId(threadUri);
-            Title = "Unknown"; // Will be fetched later
+            Title = "Unknown";
+            Status = "Pending";
             Log.Information("Initialized FourChanThread with ID: {ThreadId}", ThreadId);
         }
 
         public override async Task ArchiveAsync(ArchiveOptions options)
         {
+            Status = "Downloading";
+
             Log.Information("Archiving thread {ThreadId} with options {Options}", ThreadId, options);
+
             await EnqueueMediaDownloadsAsync(options.DownloadQueue);
         }
 
@@ -70,14 +74,17 @@ namespace oChan.Boards.FourChan
                         Filename = x.Value<string>("filename") ?? "unknown"
                     });
 
+                TotalMediaCount = postsWithImages.Count();
+
                 foreach (var post in postsWithImages)
                 {
                     if (string.IsNullOrWhiteSpace(post.Ext) || post.Tim == 0) continue; // Skip invalid images
 
                     string imageUrl = $"https://i.4cdn.org/{boardCode}/{post.Tim}{post.Ext}";
                     string destinationPath = Path.Combine("Downloads", boardCode, ThreadId, $"{post.Filename}{post.Ext}");
+                    string mediaIdentifier = post.Tim.ToString();
 
-                    var downloadItem = new DownloadItem(new Uri(imageUrl), destinationPath, Board.ImageBoard);
+                    var downloadItem = new DownloadItem(new Uri(imageUrl), destinationPath, Board.ImageBoard, this, mediaIdentifier);
                     queue.EnqueueDownload(downloadItem);
                     Log.Debug("Enqueued download for image {ImageUrl}", imageUrl);
                 }

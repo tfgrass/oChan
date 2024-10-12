@@ -21,13 +21,6 @@ namespace oChan
         {
             InitializeComponent();
 
-            // Initialize logging (if not already initialized)
-            // If logging is initialized in Registry, you can skip this
-            // Log.Logger = new LoggerConfiguration()
-            //     .MinimumLevel.Debug()
-            //     .WriteTo.Console()
-            //     .CreateLogger();
-
             // Initialize the registry
             _Registry = new Registry();
 
@@ -48,18 +41,22 @@ namespace oChan
             {
                 try
                 {
-                    IThread thread = _Registry.HandleUrl(url);
+                    IThread? thread = _Registry.HandleUrl(url);
                     if (thread != null)
                     {
                         // Add the thread to the list for display in the DataGrid
                         UrlList.Add(thread);
 
-                        // Optionally, start the download or archive process
-                        ArchiveOptions options = new ArchiveOptions();
+                        // Initialize the ArchiveOptions with a shared DownloadQueue
+                        ArchiveOptions options = new ArchiveOptions
+                        {
+                            DownloadQueue = new DownloadQueue(5, 1024 * 1024 * 10) // Adjust parallel downloads and bandwidth limit as needed
+                        };
+
+                        // Start the archive process asynchronously
                         await thread.ArchiveAsync(options);
 
-                        // Update UI if necessary
-                        // If IThread implements INotifyPropertyChanged, the UI will update automatically
+                        // The UI will update automatically due to data binding and INotifyPropertyChanged
                     }
                     else
                     {

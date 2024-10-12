@@ -58,9 +58,11 @@ namespace oChan.Downloader
 
                 var totalBytes = await CopyToAsync(contentStream, fileStream, 81920, cancellationToken);
 
-                // Log the total size of the file in both bytes and human-readable format
                 Log.Information("Successfully downloaded {DownloadUri} to {DestinationPath}. File size: {TotalBytes} bytes ({HumanReadableTotalBytes})", 
                     _downloadItem.DownloadUri, _downloadItem.DestinationPath, totalBytes, Utils.ToHumanReadableSize(totalBytes));
+
+                // Notify the thread about the completed download
+                _downloadItem.Thread.MarkMediaAsDownloaded(_downloadItem.MediaIdentifier);
             }
             catch (Exception ex)
             {

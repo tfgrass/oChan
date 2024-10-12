@@ -15,13 +15,16 @@ namespace oChan.Boards.Base
         public abstract string ThreadId { get; }
 
         private string _title;
-        public virtual string Title  // Removed override, now simply implements the interface
+        public virtual string Title
         { 
             get => _title; 
             set
             {
-                _title = value;
-                OnPropertyChanged();
+                if (_title != value)
+                {
+                    _title = value;
+                    OnPropertyChanged();
+                }
             }
         }
 
@@ -34,13 +37,42 @@ namespace oChan.Boards.Base
             get => _status;
             set
             {
-                _status = value;
-                OnPropertyChanged();
-                Log.Information("Thread {ThreadId} status changed to: {Status}", ThreadId, _status);
+                if (_status != value)
+                {
+                    _status = value;
+                    OnPropertyChanged();
+                    Log.Information("Thread {ThreadId} status changed to: {Status}", ThreadId, _status);
+                }
             }
         }
 
-        public string Progress => "0%";  // Placeholder for actual progress logic
+        private int _totalMediaCount;
+        public int TotalMediaCount
+        {
+            get => _totalMediaCount;
+            set
+            {
+                if (_totalMediaCount != value)
+                {
+                    _totalMediaCount = value;
+                    OnPropertyChanged();
+                    OnPropertyChanged(nameof(Progress));
+                }
+            }
+        }
+
+        public int DownloadedMediaCount => DownloadedMedia.Count;
+
+        public string Progress
+        {
+            get
+            {
+                if (TotalMediaCount == 0)
+                    return "0 / 0 (0%)";
+                double percent = (double)DownloadedMediaCount / TotalMediaCount * 100;
+                return $"{DownloadedMediaCount} / {TotalMediaCount} ({percent:0.##}%)";
+            }
+        }
 
         public string Url => ThreadUri.ToString();
 
@@ -49,7 +81,7 @@ namespace oChan.Boards.Base
         public virtual async Task ArchiveAsync(ArchiveOptions options)
         {
             Log.Information("Archiving thread {ThreadId} with options {Options}", ThreadId, options);
-            await Task.CompletedTask;
+            await EnqueueMediaDownloadsAsync(options.DownloadQueue);
         }
 
         public virtual async Task EnqueueMediaDownloadsAsync(DownloadQueue queue)
@@ -67,8 +99,16 @@ namespace oChan.Boards.Base
 
         public virtual void MarkMediaAsDownloaded(string mediaIdentifier)
         {
-            Log.Debug("Marking media {MediaId} as downloaded", mediaIdentifier);
-            DownloadedMedia.Add(mediaIdentifier);
+            if (DownloadedMedia.Add(mediaIdentifier))
+            {
+                OnPropertyChanged(nameof(DownloadedMediaCount));
+                OnPropertyChanged(nameof(Progress));
+
+                if (DownloadedMediaCount == TotalMediaCount)
+                {
+                    Status = "Finished";
+                }
+            }
         }
 
         // Implementing INotifyPropertyChanged
