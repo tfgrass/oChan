@@ -7,6 +7,7 @@ using oChan.Interfaces;
 using Serilog;
 using Newtonsoft.Json;
 using System.Net.Http;
+using System.Text.RegularExpressions;
 
 namespace oChan.Boards.FourChan
 {
@@ -75,7 +76,7 @@ namespace oChan.Boards.FourChan
 
         private string ExtractBoardCode(Uri boardUri)
         {
-            var match = System.Text.RegularExpressions.Regex.Match(boardUri.AbsolutePath, @"^/(\w+)/?");
+            Match match = Regex.Match(boardUri.AbsolutePath, @"^/(\w+)/?");
             if (match.Success)
             {
                 return match.Groups[1].Value;

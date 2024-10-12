@@ -147,7 +147,7 @@ namespace oChan.Boards.Base
                 try
                 {
                     string jsonContent = await File.ReadAllTextAsync(filePath);
-                    var downloadedMedia = JsonSerializer.Deserialize<HashSet<string>>(jsonContent);
+                    HashSet<string> downloadedMedia = JsonSerializer.Deserialize<HashSet<string>>(jsonContent);
                     if (downloadedMedia != null)
                     {
                         DownloadedMedia = downloadedMedia;
@@ -198,7 +198,7 @@ namespace oChan.Boards.Base
 
                 Task.Run(async () =>
                 {
-                    var queue = new DownloadQueue(5, 1024 * 1024); // Example queue
+                    DownloadQueue queue = new DownloadQueue(5, 1024 * 1024); // Example queue
                     await RecheckThreadAsync(queue);
                 });
 

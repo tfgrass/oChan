@@ -39,33 +39,33 @@ namespace oChan.Downloader
             {
                 if (_downloadItem.Thread.IsMediaDownloaded(_downloadItem.MediaIdentifier))
                 {
-                    Log.Information("Media {MediaIdentifier} already downloaded for thread {ThreadId}, skipping download.", 
+                    Log.Information("Media {MediaIdentifier} already downloaded for thread {ThreadId}, skipping download.",
                         _downloadItem.MediaIdentifier, _downloadItem.Thread.ThreadId);
                     return;
                 }
 
                 Log.Debug("Starting execution of DownloadWorker for {DownloadUri}", _downloadItem.DownloadUri);
 
-                var httpClient = _downloadItem.ImageBoard.GetHttpClient();
+                HttpClient httpClient = _downloadItem.ImageBoard.GetHttpClient();
 
-                using var response = await httpClient.GetAsync(_downloadItem.DownloadUri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+                using HttpResponseMessage response = await httpClient.GetAsync(_downloadItem.DownloadUri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
                 response.EnsureSuccessStatusCode();
 
-                var directory = Path.GetDirectoryName(_downloadItem.DestinationPath);
+                string directory = Path.GetDirectoryName(_downloadItem?.DestinationPath) ?? string.Empty;
                 if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
                 {
                     Log.Debug("Creating directory {Directory}", directory);
                     Directory.CreateDirectory(directory);
                 }
 
-                using var contentStream = await response.Content.ReadAsStreamAsync(cancellationToken);
-                using var fileStream = new FileStream(_downloadItem.DestinationPath, FileMode.Create, FileAccess.Write, FileShare.None);
+                using Stream contentStream = await response.Content.ReadAsStreamAsync(cancellationToken);
+                using FileStream fileStream = new FileStream(_downloadItem?.DestinationPath ?? throw new ArgumentNullException(nameof(_downloadItem.DestinationPath)), FileMode.Create, FileAccess.Write, FileShare.None);
 
                 Log.Debug("Beginning file copy to {DestinationPath}", _downloadItem.DestinationPath);
 
-                var totalBytes = await CopyToAsync(contentStream, fileStream, 81920, cancellationToken);
+                long totalBytes = await CopyToAsync(contentStream, fileStream, 81920, cancellationToken);
 
-                Log.Information("Successfully downloaded {DownloadUri} to {DestinationPath}. File size: {TotalBytes} bytes ({HumanReadableTotalBytes})", 
+                Log.Information("Successfully downloaded {DownloadUri} to {DestinationPath}. File size: {TotalBytes} bytes ({HumanReadableTotalBytes})",
                     _downloadItem.DownloadUri, _downloadItem.DestinationPath, totalBytes, Utils.ToHumanReadableSize(totalBytes));
 
                 _downloadItem.Thread.MarkMediaAsDownloaded(_downloadItem.MediaIdentifier);
@@ -79,7 +79,7 @@ namespace oChan.Downloader
 
         private async Task<long> CopyToAsync(Stream source, Stream destination, int bufferSize, CancellationToken cancellationToken)
         {
-            var buffer = new byte[bufferSize];
+            byte[] buffer = new byte[bufferSize];
             int bytesRead;
             long totalBytes = 0;
 

@@ -29,11 +29,11 @@ namespace oChan.Downloader
         {
             Log.Information("Rechecking threads...");
 
-            foreach (var thread in _threadsToMonitor)
+            foreach (IThread thread in _threadsToMonitor)
             {
                 try
                 {
-                    var queue = new DownloadQueue(5, 1024 * 1024); // Example queue for rechecking
+                    DownloadQueue queue = new DownloadQueue(5, 1024 * 1024); // Example queue for rechecking
                     await thread.RecheckThreadAsync(queue);
                     Log.Information("Rechecked thread {ThreadId}", thread.ThreadId);
                 }

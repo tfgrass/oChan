@@ -6,7 +6,7 @@ using oChan.Interfaces;
 using Serilog;
 using Newtonsoft.Json.Linq;
 using System.Net.Http;
-
+using System.Text.RegularExpressions;
 namespace oChan.Boards.EightKun
 {
     public class EightKunBoard : BaseBoard
@@ -39,11 +39,11 @@ namespace oChan.Boards.EightKun
                 response.EnsureSuccessStatusCode();
 
                 string json = await response.Content.ReadAsStringAsync();
-                var catalogData = JArray.Parse(json);
+                JArray catalogData = JArray.Parse(json);
 
-                foreach (var page in catalogData)
+                foreach (JToken page in catalogData)
                 {
-                    foreach (var thread in page["threads"])
+                    foreach (JToken thread in page["threads"])
                     {
                         string threadId = thread["no"].ToString();
                         Uri threadUri = new Uri($"https://8kun.top/{BoardCode}/res/{threadId}.html");
@@ -64,7 +64,7 @@ namespace oChan.Boards.EightKun
 
         private string ExtractBoardCode(Uri boardUri)
         {
-            var match = System.Text.RegularExpressions.Regex.Match(boardUri.AbsolutePath, @"^/(\w+)/?");
+            Match match = Regex.Match(boardUri.AbsolutePath, @"^/(\w+)/?");
             if (match.Success)
             {
                 return match.Groups[1].Value;

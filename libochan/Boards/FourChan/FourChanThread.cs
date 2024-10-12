@@ -9,6 +9,8 @@ using oChan.Interfaces;
 using Serilog;
 using Newtonsoft.Json.Linq;
 using System.Net.Http;
+using System.Diagnostics.CodeAnalysis;
+using System.Text.RegularExpressions;
 
 namespace oChan.Boards.FourChan
 {
@@ -31,6 +33,7 @@ namespace oChan.Boards.FourChan
             Log.Information("Initialized FourChanThread with ID: {ThreadId}", ThreadId);
         }
 
+        [RequiresUnreferencedCode("dynamic json shit")]
         public override async Task RecheckThreadAsync(DownloadQueue queue)
         {
             // Update status to "Rechecking" at the start of the recheck
@@ -41,26 +44,26 @@ namespace oChan.Boards.FourChan
 
             try
             {
-                var client = Board.ImageBoard.GetHttpClient();
+                HttpClient client = Board.ImageBoard.GetHttpClient();
                 string boardCode = ((FourChanBoard)Board).BoardCode;
                 string threadJsonUrl = $"https://a.4cdn.org/{boardCode}/thread/{ThreadId}.json";
                 HttpResponseMessage response = await client.GetAsync(threadJsonUrl);
                 response.EnsureSuccessStatusCode();
 
-                var json = await response.Content.ReadAsStringAsync();
-                var threadData = JObject.Parse(json);
+                string json = await response.Content.ReadAsStringAsync();
+                JObject threadData = JObject.Parse(json);
 
                 // Update thread title if available
                 Title = threadData["posts"]?[0]?["sub"]?.ToString() ?? $"Thread {ThreadId}";
 
-                var posts = threadData["posts"];
+                JArray posts = threadData["posts"] as JArray;
                 if (posts == null)
                 {
                     Log.Error("No 'posts' found in thread data for thread {ThreadId}", ThreadId);
                     throw new Exception("Thread data does not contain 'posts'.");
                 }
 
-                var postsWithImages = posts
+                IEnumerable<dynamic> postsWithImages = posts
                     .Where(x => x["ext"] != null && x["tim"] != null && x["filename"] != null)
                     .Select(x => new
                     {
@@ -76,7 +79,7 @@ namespace oChan.Boards.FourChan
                     Status = "Downloading"; // Set status to "Downloading" if new images are being downloaded
                 }
 
-                foreach (var post in postsWithImages)
+                foreach (dynamic post in postsWithImages)
                 {
                     if (string.IsNullOrWhiteSpace(post.Ext) || post.Tim == 0) continue; // Skip invalid images
 
@@ -92,7 +95,7 @@ namespace oChan.Boards.FourChan
                     string imageUrl = $"https://i.4cdn.org/{boardCode}/{post.Tim}{post.Ext}";
                     string destinationPath = Path.Combine("Downloads", boardCode, ThreadId, $"{post.Filename}{post.Ext}");
 
-                    var downloadItem = new DownloadItem(new Uri(imageUrl), destinationPath, Board.ImageBoard, this, mediaIdentifier);
+                    DownloadItem downloadItem = new DownloadItem(new Uri(imageUrl), destinationPath, Board.ImageBoard, this, mediaIdentifier);
                     queue.EnqueueDownload(downloadItem);
                     Log.Debug("Enqueued download for image {ImageUrl}", imageUrl);
                 }
@@ -113,7 +116,7 @@ namespace oChan.Boards.FourChan
 
         private string ExtractThreadId(Uri threadUri)
         {
-            var match = System.Text.RegularExpressions.Regex.Match(threadUri.AbsolutePath, @"thread/(\d+)");
+            Match match = Regex.Match(threadUri.AbsolutePath, @"thread/(\d+)");
             if (match.Success)
             {
                 return match.Groups[1].Value;

@@ -46,7 +46,7 @@ namespace oChan.Downloader
             await _semaphore.WaitAsync(cancellationToken);
             try
             {
-                var now = DateTime.UtcNow;
+                DateTime now = DateTime.UtcNow;
 
                 if ((now - _currentSecondStart).TotalSeconds >= 1)
                 {
@@ -63,11 +63,11 @@ namespace oChan.Downloader
                 if (_bytesDownloadedThisSecond > _maxBytesPerSecond)
                 {
                     // Calculate delay
-                    var delay = 1000 - (now - _currentSecondStart).TotalMilliseconds;
+                    int delay = (int)(1000 - (now - _currentSecondStart).TotalMilliseconds);
                     if (delay > 0)
                     {
                         Log.Debug("Throttling download. Sleeping for {Delay} milliseconds.", delay);
-                        await Task.Delay((int)delay, cancellationToken);
+                        await Task.Delay(delay, cancellationToken);
                     }
                     else
                     {

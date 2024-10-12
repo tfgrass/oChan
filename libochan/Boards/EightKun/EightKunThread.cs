@@ -9,7 +9,7 @@ using oChan.Boards.Base;
 using oChan.Downloader;
 using oChan.Interfaces;
 using Serilog;
-
+using  System.Text.RegularExpressions;
 namespace oChan.Boards.EightKun
 {
     public class EightKunThread : BaseThread
@@ -40,25 +40,25 @@ namespace oChan.Boards.EightKun
             {
                 Log.Debug("Enqueuing media downloads for thread {ThreadId}", ThreadId);
 
-                var client = Board.ImageBoard.GetHttpClient();
+                HttpClient client = Board.ImageBoard.GetHttpClient();
                 HttpResponseMessage response = await client.GetAsync(ThreadUri);
                 response.EnsureSuccessStatusCode();
                 string htmlContent = await response.Content.ReadAsStringAsync();
 
-                var doc = new HtmlDocument();
+                HtmlDocument doc = new HtmlDocument();
                 doc.LoadHtml(htmlContent);
 
-                var imageNodes = doc.DocumentNode.SelectNodes("//div[contains(@class, 'file')]//a[contains(@href, 'media')]");
+                HtmlNodeCollection imageNodes = doc.DocumentNode.SelectNodes("//div[contains(@class, 'file')]//a[contains(@href, 'media')]");
 
                 // Preserve the previous counts
                 int previousTotalMediaCount = TotalMediaCount;
                 int newMediaCount = 0;
 
-                var uniqueImageUrls = new HashSet<string>();
+                HashSet<string> uniqueImageUrls = new HashSet<string>();
 
                 if (imageNodes != null)
                 {
-                    foreach (var node in imageNodes)
+                    foreach (HtmlNode node in imageNodes)
                     {
                         string imageUrl = node.GetAttributeValue("href", string.Empty);
                         string mediaIdentifier = ExtractMediaIdentifier(imageUrl);
@@ -69,7 +69,7 @@ namespace oChan.Boards.EightKun
                             string fileName = node.InnerText.Trim();
                             string destinationPath = Path.Combine("Downloads", Board.BoardCode, ThreadId, fileName);
 
-                            var downloadItem = new DownloadItem(new Uri(imageUrl), destinationPath, Board.ImageBoard, this, mediaIdentifier);
+                            DownloadItem downloadItem = new DownloadItem(new Uri(imageUrl), destinationPath, Board.ImageBoard, this, mediaIdentifier);
                             queue.EnqueueDownload(downloadItem);
                             Log.Debug("Enqueued download for image {ImageUrl}", imageUrl);
                             uniqueImageUrls.Add(imageUrl);
@@ -122,13 +122,13 @@ namespace oChan.Boards.EightKun
 
         private string ExtractMediaIdentifier(string mediaUrl)
         {
-            var match = System.Text.RegularExpressions.Regex.Match(mediaUrl, @"file_store/(\w+)");
+            Match match = Regex.Match(mediaUrl, @"file_store/(\w+)");
             return match.Success ? match.Groups[1].Value : Guid.NewGuid().ToString();
         }
 
         private string ExtractThreadId(Uri threadUri)
         {
-            var match = System.Text.RegularExpressions.Regex.Match(threadUri.AbsolutePath, @"res/(\d+)");
+            Match match = Regex.Match(threadUri.AbsolutePath, @"res/(\d+)");
             if (match.Success)
             {
                 return match.Groups[1].Value;

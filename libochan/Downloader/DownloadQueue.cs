@@ -76,11 +76,11 @@ namespace oChan.Downloader
                 {
                     _parallelDownloadsSemaphore.Wait();
 
-                    if (_downloadQueue.TryDequeue(out var downloadItem))
+                    if (_downloadQueue.TryDequeue(out DownloadItem? downloadItem))
                     {
                         Log.Debug("Starting download task for {DownloadUri}", downloadItem.DownloadUri);
 
-                        var task = Task.Run(() => ProcessDownloadItemAsync(downloadItem));
+                        Task task = Task.Run(() => ProcessDownloadItemAsync(downloadItem));
                         _workerTasks.Add(task);
 
                         // Clean up completed tasks
@@ -106,7 +106,7 @@ namespace oChan.Downloader
             {
                 Log.Information("Starting download for {DownloadUri}", item.DownloadUri);
 
-                var downloadWorker = new DownloadWorker(item, _bandwidthLimiter);
+                DownloadWorker downloadWorker = new DownloadWorker(item, _bandwidthLimiter);
                 await downloadWorker.ExecuteAsync(_cts.Token);
 
                 Log.Information("Completed download for {DownloadUri}", item.DownloadUri);
