@@ -64,7 +64,6 @@ public class EightKunThread : BaseThread
 
             foreach (JToken post in threadData["posts"])
             {
-                // Check for media files and extra files
                 newMediaCount += ProcessPostMedia(post, queue, uniqueImageUrls);
             }
 
@@ -85,14 +84,13 @@ public class EightKunThread : BaseThread
             _isChecking = false; // Mark that the recheck is finished
         }
 
-        // If all media has been downloaded, set the status to "Finished"
         if (DownloadedMediaCount == TotalMediaCount && TotalMediaCount > 0)
         {
-            Status = "Finished"; // Set status to "Finished" after recheck and download completion
+            Status = "Finished"; 
         }
         else if (TotalMediaCount == 0)
         {
-            Status = "No media found"; // Handle case where no media is found
+            Status = "No media found"; 
         }
     }
 
@@ -106,9 +104,11 @@ public class EightKunThread : BaseThread
             string ext = post["ext"].ToString();
             string imageUrl = $"https://media.128ducks.com/file_store/{mediaIdentifier}{ext}";
 
-            if (!IsMediaDownloaded(mediaIdentifier) && !uniqueImageUrls.Contains(imageUrl))
+            if (!IsMediaDownloaded(mediaIdentifier) && !queue.IsInQueue(imageUrl) && !uniqueImageUrls.Contains(imageUrl))
             {
-                string fileName = $"{post["filename"]}{ext}";
+                // Use the board's unique filename
+                string fileName = $"{mediaIdentifier}{ext}";
+                fileName = SanitizeFileName(fileName);
                 string destinationPath = Path.Combine("Downloads", Board.BoardCode, ThreadId, fileName);
 
                 DownloadItem downloadItem = new DownloadItem(new Uri(imageUrl), destinationPath, Board.ImageBoard, this, mediaIdentifier);
@@ -118,7 +118,6 @@ public class EightKunThread : BaseThread
             }
         }
 
-        // Handle extra files in the post
         if (post["extra_files"] != null)
         {
             foreach (JToken extraFile in post["extra_files"])
@@ -127,9 +126,11 @@ public class EightKunThread : BaseThread
                 string ext = extraFile["ext"].ToString();
                 string imageUrl = $"https://media.128ducks.com/file_store/{mediaIdentifier}{ext}";
 
-                if (!IsMediaDownloaded(mediaIdentifier) && !uniqueImageUrls.Contains(imageUrl))
+                if (!IsMediaDownloaded(mediaIdentifier) && !queue.IsInQueue(imageUrl) && !uniqueImageUrls.Contains(imageUrl))
                 {
-                    string fileName = $"{extraFile["filename"]}{ext}";
+                    // Use the board's unique filename
+                    string fileName = $"{mediaIdentifier}{ext}";
+                    fileName = SanitizeFileName(fileName);
                     string destinationPath = Path.Combine("Downloads", Board.BoardCode, ThreadId, fileName);
 
                     DownloadItem downloadItem = new DownloadItem(new Uri(imageUrl), destinationPath, Board.ImageBoard, this, mediaIdentifier);
@@ -142,11 +143,6 @@ public class EightKunThread : BaseThread
 
         return newMediaCount;
     }
-
-
-
-
-
 
     private string ExtractMediaIdentifier(string mediaUrl)
     {
@@ -167,5 +163,15 @@ public class EightKunThread : BaseThread
             throw new ArgumentException("Invalid thread URI", nameof(threadUri));
         }
     }
-}
 
+    private string SanitizeFileName(string fileName)
+    {
+        // Replace any invalid file name characters with underscores
+        char[] invalidChars = Path.GetInvalidFileNameChars();
+        foreach (char c in invalidChars)
+        {
+            fileName = fileName.Replace(c, '_');
+        }
+        return fileName;
+    }
+}

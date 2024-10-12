@@ -7,7 +7,6 @@ using System.Net.Http;
 using System.Threading.Tasks;
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
-using System.Diagnostics.CodeAnalysis;
 using Newtonsoft.Json.Linq;
 using oChan.Downloader;
 using oChan.Interfaces;
@@ -33,10 +32,8 @@ public class FourChanThread : BaseThread
         Log.Information("Initialized FourChanThread with ID: {ThreadId}", ThreadId);
     }
 
-    [RequiresUnreferencedCode("dynamic json shit")]
     public override async Task checkThreadAsync(DownloadQueue queue)
     {
-        // Update status to "Rechecking" at the start of the recheck
         Status = "Checking";
         await base.checkThreadAsync(queue);
 
@@ -53,7 +50,6 @@ public class FourChanThread : BaseThread
             string json = await response.Content.ReadAsStringAsync();
             JObject threadData = JObject.Parse(json);
 
-            // Update thread title if available
             Title = threadData["posts"]?[0]?["sub"]?.ToString() ?? $"Thread {ThreadId}";
 
             JArray posts = threadData["posts"] as JArray;
@@ -76,19 +72,18 @@ public class FourChanThread : BaseThread
 
             if (TotalMediaCount > 0)
             {
-                Status = "Downloading"; // Set status to "Downloading" if new images are being downloaded
+                Status = "Downloading"; 
             }
 
             foreach (dynamic post in postsWithImages)
             {
-                if (string.IsNullOrWhiteSpace(post.Ext) || post.Tim == 0) continue; // Skip invalid images
+                if (string.IsNullOrWhiteSpace(post.Ext) || post.Tim == 0) continue;
 
                 string mediaIdentifier = post.Tim.ToString();
 
-                // Skip already downloaded media
-                if (IsMediaDownloaded(mediaIdentifier))
+                if (IsMediaDownloaded(mediaIdentifier) || queue.IsInQueue($"https://i.4cdn.org/{boardCode}/{post.Tim}{post.Ext}"))
                 {
-                    Log.Debug("Skipping already downloaded media {MediaIdentifier} for thread {ThreadId}", mediaIdentifier, ThreadId);
+                    Log.Debug("Skipping already downloaded or enqueued media {MediaIdentifier} for thread {ThreadId}", mediaIdentifier, ThreadId);
                     continue;
                 }
 
@@ -107,7 +102,6 @@ public class FourChanThread : BaseThread
             Log.Error(ex, "Error enqueuing media downloads for thread {ThreadId}: {Message}", ThreadId, ex.Message);
         }
 
-        // Set status to "Finished" if all media has been downloaded
         if (DownloadedMediaCount == TotalMediaCount)
         {
             Status = "Finished";
