@@ -4,6 +4,7 @@
         x:Class="oChan.MainWindow"
         x:DataType="vm:MainWindow"
         xmlns:vm="clr-namespace:oChan"
+        Width="800" Height="600"
         Title="oChan">
     <DockPanel>
         <!-- Application Menu -->
@@ -24,10 +25,9 @@
 
             <!-- URL Input Section -->
             <StackPanel Grid.Row="0">
-                <TextBlock Text="Enter Thread or Board URL:" Margin="0,0,0,10"/>
-                <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
-                    <TextBox x:Name="UrlInput" Width="300" Watermark="Enter URL here..." />
-                    <Button x:Name="AddUrlButton" Content="Add" Margin="10,0,0,0" Width="120" />
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                    <TextBox x:Name="UrlInput" Width="655" Watermark="Enter Thread or Board URL here ..." />
+                    <Button x:Name="AddUrlButton" Content="Add" Margin="10,0,0,0" Width="100" />
                 </StackPanel>
             </StackPanel>
 
