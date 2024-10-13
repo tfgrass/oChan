@@ -1,6 +1,8 @@
 namespace oChan.Boards.Base;
 
 using System;
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using System.Collections.Generic;
 using oChan.Downloader;
@@ -8,7 +10,7 @@ using oChan.Interfaces;
 using Serilog;
 using System.Timers;
 
-public abstract class BaseBoard : IBoard
+public abstract class BaseBoard : IBoard, INotifyPropertyChanged
 {
     public abstract IImageBoard ImageBoard { get; }
     public abstract string BoardCode { get; }
@@ -105,5 +107,13 @@ public abstract class BaseBoard : IBoard
         {
             Log.Error(ex, "Error checking for new threads on board {BoardCode}", BoardCode);
         }
+    }
+
+    // Implementation of INotifyPropertyChanged
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    protected void OnPropertyChanged([CallerMemberName] string? propertyName = null)
+    {
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
     }
 }

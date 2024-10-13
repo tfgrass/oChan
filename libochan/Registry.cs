@@ -11,12 +11,14 @@ namespace oChan
     {
         // Store singleton instances of image boards in a dictionary
         private readonly Dictionary<Type, IImageBoard> _registeredImageBoards = new();
+        private readonly HashSet<string> _processedThreadUrls = new();  // Keep track of added thread URLs
+        private readonly HashSet<string> _processedBoardUrls = new();   // Keep track of added board URLs
 
         public Registry()
         {
             Log.Logger = new LoggerConfiguration()
-                .MinimumLevel.Debug() // Set the minimum log level
-                .WriteTo.Console()    // Output logs to the console
+                .MinimumLevel.Warning() // Set the minimum log level
+                .WriteTo.Console()      // Output logs to the console
                 .CreateLogger();
 
             Log.Information("Registry initialized with logging configured.");
@@ -59,7 +61,7 @@ namespace oChan
             }
         }
 
-        // New method to get a thread instance given a thread URL
+        // Get a thread instance for a given thread URL and prevent duplicate entries
         public IThread? GetThread(string url)
         {
             if (string.IsNullOrWhiteSpace(url))
@@ -68,6 +70,12 @@ namespace oChan
                 throw new ArgumentNullException(nameof(url));
             }
 
+            if (_processedThreadUrls.Contains(url))
+            {
+                Log.Warning("Thread URL {Url} is already added.", url);
+                return null; // Prevent adding the same thread URL multiple times
+            }
+
             Uri uri;
             try
             {
@@ -76,22 +84,19 @@ namespace oChan
             catch (UriFormatException ex)
             {
                 Log.Error(ex, "Invalid URL format: {Url}", url);
-                throw;
+                return null;
             }
 
             foreach (IImageBoard imageBoard in _registeredImageBoards.Values)
             {
-                if (imageBoard.CanHandle(uri))
+                if (imageBoard.CanHandle(uri) && imageBoard.IsThreadUri(uri))
                 {
-                    if (imageBoard.IsThreadUri(uri))
-                    {
-                        Log.Debug("Image board {ImageBoardName} identified URL as thread: {Url}", imageBoard.GetType().Name, url);
+                    Log.Debug("Image board {ImageBoardName} identified URL as thread: {Url}", imageBoard.GetType().Name, url);
 
-                        // Get the thread from the image board
-                        IThread thread = imageBoard.GetThread(uri);
+                    IThread thread = imageBoard.GetThread(uri);
+                    _processedThreadUrls.Add(url);  // Mark the URL as processed
 
-                        return thread;
-                    }
+                    return thread;
                 }
             }
 
@@ -99,7 +104,7 @@ namespace oChan
             return null;
         }
 
-        // New method to get a board instance given a board URL
+        // Get a board instance for a given board URL and prevent duplicate entries
         public IBoard? GetBoard(string url)
         {
             if (string.IsNullOrWhiteSpace(url))
@@ -108,6 +113,12 @@ namespace oChan
                 throw new ArgumentNullException(nameof(url));
             }
 
+            if (_processedBoardUrls.Contains(url))
+            {
+                Log.Warning("Board URL {Url} is already added.", url);
+                return null; // Prevent adding the same board URL multiple times
+            }
+
             Uri uri;
             try
             {
@@ -116,22 +127,19 @@ namespace oChan
             catch (UriFormatException ex)
             {
                 Log.Error(ex, "Invalid URL format: {Url}", url);
-                throw;
+                return null;
             }
 
             foreach (IImageBoard imageBoard in _registeredImageBoards.Values)
             {
-                if (imageBoard.CanHandle(uri))
+                if (imageBoard.CanHandle(uri) && imageBoard.IsBoardUri(uri))
                 {
-                    if (imageBoard.IsBoardUri(uri))
-                    {
-                        Log.Debug("Image board {ImageBoardName} identified URL as board: {Url}", imageBoard.GetType().Name, url);
+                    Log.Debug("Image board {ImageBoardName} identified URL as board: {Url}", imageBoard.GetType().Name, url);
 
-                        // Get the board from the image board
-                        IBoard board = imageBoard.GetBoard(uri);
+                    IBoard board = imageBoard.GetBoard(uri);
+                    _processedBoardUrls.Add(url);  // Mark the URL as processed
 
-                        return board;
-                    }
+                    return board;
                 }
             }
 

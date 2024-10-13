@@ -1,4 +1,4 @@
-// File: MainWindow.axaml.cs
+// MainWindow.axaml.cs
 
 using System;
 using System.Threading.Tasks;
@@ -129,7 +129,6 @@ namespace oChan
             });
         }
 
-        // Event handler for Settings menu item
         // Event handler for Settings menu item
         private void OnSettingsMenuItemClick(object sender, RoutedEventArgs e)
         {

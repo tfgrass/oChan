@@ -1,10 +1,16 @@
 <Application xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:actipro="http://schemas.actiprosoftware.com/avaloniaui"
+	           xmlns:generator="using:ActiproSoftware.UI.Avalonia.Themes.Generation"
              x:Class="oChan.App"
              RequestedThemeVariant="Default">
              <!-- "Default" ThemeVariant follows system theme variant. "Dark" or "Light" are other available options. -->
 
-    <Application.Styles>
-        <FluentTheme />
-    </Application.Styles>
+  <Application.Styles>
+ 	<actipro:ModernTheme Includes="NativeDataGrid">
+			<actipro:ModernTheme.Definition>
+				<generator:ThemeDefinition TabAppearanceKind="Subtle" />
+			</actipro:ModernTheme.Definition>
+		</actipro:ModernTheme>
+  </Application.Styles>
 </Application>
