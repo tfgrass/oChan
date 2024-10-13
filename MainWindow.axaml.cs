@@ -1,5 +1,3 @@
-// MainWindow.axaml.cs
-
 using System;
 using System.Threading.Tasks;
 using Avalonia.Controls;
@@ -70,6 +68,9 @@ namespace oChan
                         // Add the thread to the list for display in the DataGrid
                         UrlList.Add(thread);
 
+                        // Subscribe to the ThreadRemoved event so we can remove the thread when necessary
+                        thread.ThreadRemoved += OnThreadRemoved;
+
                         // Initialize the ArchiveOptions with the shared DownloadQueue
                         ArchiveOptions options = new ArchiveOptions
                         {
@@ -117,15 +118,30 @@ namespace oChan
             // Ensure that updates to UrlList are made on the UI thread
             Dispatcher.UIThread.Post(async () =>
             {
+                var thread = e.Thread;
                 // Add the new thread to your threads list
-                UrlList.Add(e.Thread);
+                UrlList.Add(thread);
+
+                // Subscribe to the ThreadRemoved event
+                thread.ThreadRemoved += OnThreadRemoved;
 
                 // Start archiving the thread
                 ArchiveOptions options = new ArchiveOptions
                 {
                     DownloadQueue = sharedDownloadQueue
                 };
-                await e.Thread.ArchiveAsync(options);
+                await thread.ArchiveAsync(options);
+            });
+        }
+
+        // Handle thread removal from the UI
+        private void OnThreadRemoved(IThread thread)
+        {
+            // Ensure the removal happens on the UI thread
+            Dispatcher.UIThread.Post(() =>
+            {
+                Log.Information("Removing thread {ThreadId} from the UI.", thread.ThreadId);
+                UrlList.Remove(thread); // Remove the thread from the UI list
             });
         }
 
@@ -142,6 +158,5 @@ namespace oChan
             var aboutWindow = new AboutWindow();
             aboutWindow.ShowDialog(this);
         }
-
     }
 }

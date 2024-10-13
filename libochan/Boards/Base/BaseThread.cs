@@ -13,6 +13,9 @@ using Serilog;
 
 public abstract class BaseThread : IThread, INotifyPropertyChanged
 {
+    // Event that notifies when the thread should be removed
+    public event Action<IThread>? ThreadRemoved;
+
     private Rechecker _rechecker;
     private int _recheckIntervalInSeconds = 60; // Default recheck interval
 
@@ -230,5 +233,11 @@ public abstract class BaseThread : IThread, INotifyPropertyChanged
     protected void OnPropertyChanged([CallerMemberName] string? propertyName = null)
     {
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+    }
+
+    public void NotifyThreadRemoval()
+    {
+        Log.Information("Notifying that thread {ThreadId} should be removed", ThreadId);
+        ThreadRemoved?.Invoke(this); // Notify whoever is subscribed to this event (UI or Registry)
     }
 }

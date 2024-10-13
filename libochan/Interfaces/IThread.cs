@@ -15,7 +15,7 @@ namespace oChan.Interfaces
         /// Gets the parent board.
         /// </summary>
         IBoard Board { get; }
-
+        event Action<IThread> ThreadRemoved;
         /// <summary>
         /// Gets the unique identifier of the thread.
         /// </summary>
@@ -101,5 +101,10 @@ namespace oChan.Interfaces
         /// </summary>
         /// <returns>A task representing the asynchronous operation.</returns>
         Task SaveDownloadedMediaAsync();
+
+        /// <summary>
+        /// Notifies that the thread should be removed (e.g., when a 404 occurs).
+        /// </summary>
+        void NotifyThreadRemoval();
     }
 }

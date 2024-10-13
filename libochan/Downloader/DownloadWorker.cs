@@ -3,10 +3,10 @@ namespace oChan.Downloader;
 using System;
 using System.IO;
 using System.Net.Http;
+using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using Serilog;
-
 
 public class DownloadWorker
 {
@@ -49,6 +49,15 @@ public class DownloadWorker
             HttpClient httpClient = _downloadItem.ImageBoard.GetHttpClient();
 
             using HttpResponseMessage response = await httpClient.GetAsync(_downloadItem.DownloadUri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+
+            // Handle 404 status code
+            if (response.StatusCode == HttpStatusCode.NotFound)
+            {
+                Log.Warning("Thread {ThreadId} returned 404, notifying removal.", _downloadItem.Thread.ThreadId);
+                _downloadItem.Thread.NotifyThreadRemoval(); // Notify that the thread should be removed
+                return;
+            }
+
             response.EnsureSuccessStatusCode();
 
             string directory = Path.GetDirectoryName(_downloadItem?.DestinationPath) ?? string.Empty;
@@ -59,16 +68,29 @@ public class DownloadWorker
             }
 
             using Stream contentStream = await response.Content.ReadAsStreamAsync(cancellationToken);
-            using FileStream fileStream = new FileStream(_downloadItem?.DestinationPath ?? throw new ArgumentNullException(nameof(_downloadItem.DestinationPath)), FileMode.Create, FileAccess.Write, FileShare.None);
+            
+            // Handle file access exception and exit gracefully
+            try
+            {
+                using FileStream fileStream = new FileStream(_downloadItem?.DestinationPath ?? throw new ArgumentNullException(nameof(_downloadItem.DestinationPath)),
+                    FileMode.Create, FileAccess.Write, FileShare.None);
 
-            Log.Debug("Beginning file copy to {DestinationPath}", _downloadItem.DestinationPath);
+                Log.Debug("Beginning file copy to {DestinationPath}", _downloadItem.DestinationPath);
 
-            long totalBytes = await CopyToAsync(contentStream, fileStream, 81920, cancellationToken);
+                long totalBytes = await CopyToAsync(contentStream, fileStream, 81920, cancellationToken);
 
-            Log.Information("Successfully downloaded {DownloadUri} to {DestinationPath}. File size: {TotalBytes} bytes ({HumanReadableTotalBytes})",
-                _downloadItem.DownloadUri, _downloadItem.DestinationPath, totalBytes, Utils.ToHumanReadableSize(totalBytes));
+                Log.Information("Successfully downloaded {DownloadUri} to {DestinationPath}. File size: {TotalBytes} bytes ({HumanReadableTotalBytes})",
+                    _downloadItem.DownloadUri, _downloadItem.DestinationPath, totalBytes, Utils.ToHumanReadableSize(totalBytes));
 
-            _downloadItem.Thread.MarkMediaAsDownloaded(_downloadItem.MediaIdentifier);
+                _downloadItem.Thread.MarkMediaAsDownloaded(_downloadItem.MediaIdentifier);
+            }
+            catch (IOException ioEx)
+            {
+                Log.Warning("File access issue occurred for {FilePath}, exiting downloader.", _downloadItem.DestinationPath);
+
+                Log.Verbose(ioEx, "File access issue occurred for {FilePath}, exiting downloader.", _downloadItem.DestinationPath);
+                return; // Exit the downloader gracefully
+            }
         }
         catch (Exception ex)
         {
@@ -96,4 +118,3 @@ public class DownloadWorker
         return totalBytes; // Return total bytes for logging in ExecuteAsync
     }
 }
-
