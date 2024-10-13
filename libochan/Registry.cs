@@ -112,7 +112,6 @@ namespace oChan
             if (_processedThreadUrls.Contains(url))
             {
                 _processedThreadUrls.Remove(url);
-                Log.Error("Removed thread URL {Url} from processed list.", url);
 
             }
             else
@@ -126,7 +125,6 @@ namespace oChan
                 _activeThreads.Remove(url);
                 Log.Information("Removed thread {Url} from active threads.", url);
             }
-            Log.Warning(" HANDLING REMOVE THREAD URL {url}");
         }
 
         // Get a board instance for a given board URL and prevent duplicate entries
