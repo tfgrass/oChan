@@ -37,6 +37,15 @@ public class DownloadWorker
     {
         try
         {
+            // Check if the file already exists in the destination path
+            if (File.Exists(_downloadItem.DestinationPath))
+            {
+                Log.Information("File {DestinationPath} already exists, skipping download.", _downloadItem.DestinationPath);
+                _downloadItem.Thread.MarkMediaAsDownloaded(_downloadItem.MediaIdentifier);
+                return;
+            }
+
+            // Check if the media was already marked as downloaded
             if (_downloadItem.Thread.IsMediaDownloaded(_downloadItem.MediaIdentifier))
             {
                 Log.Information("Media {MediaIdentifier} already downloaded for thread {ThreadId}, skipping download.",
