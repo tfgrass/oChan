@@ -1,18 +1,18 @@
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Interactivity;
+using Avalonia.Input;
+using Avalonia.Threading;
+using System.Collections.ObjectModel;
+using System.IO;
+using oChan.Downloader;
+using oChan.Interfaces;
+using Serilog;
+using System;
+using System.Linq;
+
 namespace oChan
 {
-    using Avalonia;
-    using Avalonia.Controls;
-    using Avalonia.Markup.Xaml;
-    using Avalonia.Interactivity;
-    using Avalonia.Input;
-    using Avalonia.Threading;
-    using System.Collections.ObjectModel;
-    using System.Linq; // For LINQ methods
-    using oChan.Downloader;
-    using oChan.Interfaces;
-    using Serilog;
-    using System;
-
     public partial class MainWindow : Window
     {
         public ObservableCollection<IThread> UrlList { get; set; }
@@ -133,6 +133,78 @@ namespace oChan
             });
         }
 
+        // Handle thread directory opening
+        private void OpenThreadDirectory(IThread thread)
+        {
+            string directoryPath = Path.Combine("Downloads", thread.Board.BoardCode, thread.ThreadId);
+            if (Directory.Exists(directoryPath))
+            {
+                OpenDirectory(directoryPath);
+            }
+            else
+            {
+                Log.Warning("Directory not found for thread {ThreadId}: {DirectoryPath}", thread.ThreadId, directoryPath);
+            }
+        }
+
+        // Handle board directory opening
+        private void OpenBoardDirectory(IBoard board)
+        {
+            string directoryPath = Path.Combine("Downloads", board.BoardCode);
+            if (Directory.Exists(directoryPath))
+            {
+                OpenDirectory(directoryPath);
+            }
+            else
+            {
+                Log.Warning("Directory not found for board {BoardCode}: {DirectoryPath}", board.BoardCode, directoryPath);
+            }
+        }
+
+        // Utility method to open directory
+        private void OpenDirectory(string directoryPath)
+        {
+            try
+            {
+                var psi = new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = directoryPath,
+                    UseShellExecute = true
+                };
+                System.Diagnostics.Process.Start(psi);
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Error opening directory: {DirectoryPath}", directoryPath);
+            }
+        }
+
+        // Event handler for the "Open Directory" context menu click for threads
+        private void OnOpenThreadDirectoryClick(object sender, RoutedEventArgs e)
+        {
+            if (sender is MenuItem menuItem)
+            {
+                var dataGrid = this.FindControl<DataGrid>("ThreadsDataGrid");
+                if (dataGrid != null && dataGrid.SelectedItem is IThread thread)
+                {
+                    OpenThreadDirectory(thread);
+                }
+            }
+        }
+
+        // Event handler for the "Open Directory" context menu click for boards
+        private void OnOpenBoardDirectoryClick(object sender, RoutedEventArgs e)
+        {
+            if (sender is MenuItem menuItem)
+            {
+                var dataGrid = this.FindControl<DataGrid>("BoardsDataGrid");
+                if (dataGrid != null && dataGrid.SelectedItem is IBoard board)
+                {
+                    OpenBoardDirectory(board);
+                }
+            }
+        }
+
         private void OnThreadDiscovered(object sender, ThreadEventArgs e)
         {
             Dispatcher.UIThread.Post(async () =>
@@ -148,6 +220,7 @@ namespace oChan
                 await thread.ArchiveAsync(options);
             });
         }
+
 
         // Method to remove a thread based on ThreadUrl
         private void RemoveThread(IThread thread)
@@ -262,18 +335,50 @@ namespace oChan
             }
         }
 
-        // Event handler for the "Settings" menu item
+
         private void OnSettingsMenuItemClick(object sender, RoutedEventArgs e)
         {
             var settingsWindow = new SettingsWindow();
             settingsWindow.ShowDialog(this);
         }
 
-        // Event handler for the "About" menu item
         private void OnAboutMenuItemClick(object sender, RoutedEventArgs e)
         {
             var aboutWindow = new AboutWindow();
             aboutWindow.ShowDialog(this);
         }
+
+        // Event handler for pointer pressed on a thread
+        private void OnThreadPointerPressed(object? sender, PointerPressedEventArgs e)
+        {
+            // Add logic for pointer pressed
+        }
+
+        // Event handler for double tapped on a thread
+        private void OnThreadDoubleTapped(object? sender, TappedEventArgs e)
+        {
+            Log.Debug("Double tapped on a thread.");
+                var dataGrid = this.FindControl<DataGrid>("ThreadsDataGrid");
+                if (dataGrid != null && dataGrid.SelectedItem is IThread thread)
+                {
+                    OpenThreadDirectory(thread);
+                }
+        }
+
+        // Event handler for pointer pressed on a board
+        private void OnBoardPointerPressed(object? sender, PointerPressedEventArgs e)
+        {
+            // Add logic for pointer pressed on board
+        }
+
+        // Event handler for double tapped on a board
+        private void OnBoardDoubleTapped(object? sender, TappedEventArgs e)
+        {
+            Log.Debug("Double tapped on a thread.");
+                var dataGrid = this.FindControl<DataGrid>("BoardsDataGrid");
+                if (dataGrid != null && dataGrid.SelectedItem is IBoard board)
+                {
+                    OpenBoardDirectory(board);
+                }        }
     }
 }

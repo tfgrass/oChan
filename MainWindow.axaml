@@ -26,7 +26,7 @@
             <StackPanel Grid.Row="0">
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
                     <TextBox x:Name="UrlInput" Width="655" Watermark="Enter Thread or Board URL here ..." />
-                    <Button x:Name="AddUrlButton" Content="Add" Margin="10,0,0,0" Width="100" />
+                    <Button x:Name="AddUrlButton" Content="Add" Margin="10,0,0,0" Width="100" Click="OnAddUrl"/>
                 </StackPanel>
             </StackPanel>
 
@@ -41,7 +41,8 @@
                               GridLinesVisibility="All"
                               IsReadOnly="True"
                               SelectionMode="Single"
-                              PointerPressed="OnDataGridPointerPressed">
+                              PointerPressed="OnThreadPointerPressed" 
+                              DoubleTapped="OnThreadDoubleTapped">
                         <DataGrid.Columns>
                             <!-- Thread ID Column -->
                             <DataGridTemplateColumn Header="Thread ID">
@@ -83,6 +84,8 @@
                         <!-- ContextMenu for right-clicking on a row -->
                         <DataGrid.ContextMenu>
                             <ContextMenu>
+                                <MenuItem Header="Open Directory"
+                                          Click="OnOpenThreadDirectoryClick" />
                                 <MenuItem Header="Remove"
                                           Click="OnRemoveThreadMenuItemClick" />
                             </ContextMenu>
@@ -99,8 +102,8 @@
                               GridLinesVisibility="All"
                               CanUserSortColumns="True"
                               HeadersVisibility="All"
-                              SelectionMode="Single"
-                              PointerPressed="OnBoardDataGridPointerPressed">
+                              PointerPressed="OnBoardPointerPressed" 
+                              DoubleTapped="OnBoardDoubleTapped">
                         <DataGrid.Columns>
                             <!-- Board URL Column -->
                             <DataGridTemplateColumn Header="Board URL" Width="200">
@@ -112,9 +115,11 @@
                             </DataGridTemplateColumn>
                         </DataGrid.Columns>
 
-                        <!-- ContextMenu for right-clicking on a board row -->
+                        <!-- ContextMenu for right-clicking on a row -->
                         <DataGrid.ContextMenu>
                             <ContextMenu>
+                                <MenuItem Header="Open Directory"
+                                          Click="OnOpenBoardDirectoryClick" />
                                 <MenuItem Header="Remove"
                                           Click="OnRemoveBoardMenuItemClick" />
                             </ContextMenu>
