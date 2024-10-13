@@ -9,7 +9,7 @@
 
   <Application.Styles>
  <!--   <themes:MaterialTheme BaseTheme="Dark" PrimaryColor="Red" SecondaryColor="Lime" /> -->
- 	<actipro:ModernTheme>
+ 	<actipro:ModernTheme Includes="NativeDataGrid">
 			<actipro:ModernTheme.Definition>
 				<generator:ThemeDefinition TabAppearanceKind="Subtle" />
 			</actipro:ModernTheme.Definition>

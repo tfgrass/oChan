@@ -15,7 +15,9 @@ namespace oChan
         public Registry()
         {
             Log.Logger = new LoggerConfiguration()
-                .MinimumLevel.Debug() // Set the minimum log level
+//                .MinimumLevel.Debug() // Set the minimum log level
+                .MinimumLevel.Warning() // Set the minimum log level
+
                 .WriteTo.Console()    // Output logs to the console
                 .CreateLogger();
 
