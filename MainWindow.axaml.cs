@@ -10,7 +10,7 @@ using oChan.Interfaces;
 using Serilog;
 using System;
 using System.Linq;
-
+using oChan;
 namespace oChan
 {
     public partial class MainWindow : Window
@@ -338,7 +338,7 @@ namespace oChan
 
         private void OnSettingsMenuItemClick(object sender, RoutedEventArgs e)
         {
-            var settingsWindow = new SettingsWindow();
+        var settingsWindow = new SettingsWindow(_Registry.GetConfig());
             settingsWindow.ShowDialog(this);
         }
 

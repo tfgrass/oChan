@@ -1,12 +1,37 @@
-<!-- File: SettingsWindow.axaml -->
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="https://github.com/avaloniaui/Markup/development-tools"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                xmlns:local="clr-namespace:oChan"
+        xmlns:interfaces="clr-namespace:oChan.Interfaces"
+        mc:Ignorable="d"
         x:Class="oChan.SettingsWindow"
+        x:DataType="local:SettingsWindow"
         Title="Settings"
-        Width="400" Height="300">
+        Width="400"
+        Height="400">
     <StackPanel Margin="10">
         <TextBlock Text="Settings" FontSize="24" FontWeight="Bold" HorizontalAlignment="Center" Margin="0,0,0,10"/>
-        <!-- Add your settings controls here -->
-        <Button Content="Close" Width="100" HorizontalAlignment="Center" Click="OnCloseButtonClick"/>
+        
+        <!-- Download Path Setting -->
+        <TextBlock Text="Download Path" FontSize="16" Margin="0,10,0,0"/>
+        <TextBox Text="{Binding DownloadPath}" Width="350"/>
+
+        <!-- Recheck Timer Setting -->
+        <TextBlock Text="Recheck Timer (seconds)" FontSize="16" Margin="0,10,0,0"/>
+        <NumericUpDown Value="{Binding RecheckTimer}" Minimum="1" Maximum="3600" Width="100"/>
+
+        <!-- Save URLs on Exit -->
+        <CheckBox Content="Save URLs on Exit" IsChecked="{Binding SaveUrlsOnExit}" Margin="0,10,0,0"/>
+
+        <!-- Minimize to Tray -->
+        <CheckBox Content="Minimize to Tray" IsChecked="{Binding MinimizeToTray}" Margin="0,10,0,0"/>
+
+        <!-- Bandwidth Limiter (MB/s) -->
+        <TextBlock Text="Bandwidth Limiter (MB/s)" FontSize="16" Margin="0,10,0,0"/>
+        <NumericUpDown Value="{Binding BandwidthLimiterMB}" Minimum="0.01" Maximum="1000" Increment="0.1" Width="100"/>
+
+        <!-- Close Button -->
+        <Button Content="Save &amp; Close" Width="100" HorizontalAlignment="Center" Margin="10,20,0,0" Click="OnCloseButtonClick"/>
     </StackPanel>
 </Window>
