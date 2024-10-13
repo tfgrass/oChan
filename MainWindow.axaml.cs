@@ -1,18 +1,20 @@
-using Avalonia;
-using Avalonia.Controls;
-using Avalonia.Markup.Xaml;
-using Avalonia.Interactivity;
-using Avalonia.Input;
-using Avalonia.Threading;
-using System.Collections.ObjectModel;
-using System.Linq; // For LINQ methods
-using oChan.Downloader;
-using oChan.Interfaces;
-using Serilog;
-using System;
+// Updated MainWindow.cs
 
 namespace oChan
 {
+    using Avalonia;
+    using Avalonia.Controls;
+    using Avalonia.Markup.Xaml;
+    using Avalonia.Interactivity;
+    using Avalonia.Input;
+    using Avalonia.Threading;
+    using System.Collections.ObjectModel;
+    using System.Linq; // For LINQ methods
+    using oChan.Downloader;
+    using oChan.Interfaces;
+    using Serilog;
+    using System;
+
     public partial class MainWindow : Window
     {
         public ObservableCollection<IThread> UrlList { get; set; }
@@ -107,22 +109,6 @@ namespace oChan
             }
         }
 
-        // Event handler for the "Settings" menu item
-        private void OnSettingsMenuItemClick(object sender, RoutedEventArgs e)
-        {
-            // Assuming you have SettingsWindow implemented
-            var settingsWindow = new SettingsWindow();
-            settingsWindow.ShowDialog(this);
-        }
-
-        // Event handler for the "About" menu item
-        private void OnAboutMenuItemClick(object sender, RoutedEventArgs e)
-        {
-            // Assuming you have AboutWindow implemented
-            var aboutWindow = new AboutWindow();
-            aboutWindow.ShowDialog(this);
-        }
-
         // Handle thread removal
         private void OnThreadRemoved(IThread thread, bool abort)
         {
@@ -133,7 +119,12 @@ namespace oChan
                 {
                     sharedDownloadQueue.CancelDownloadsForThread(thread); // Cancel all downloads for this thread
                 }
+
+                // Remove the thread from the UI
                 UrlList.Remove(thread);
+
+                // Notify the Registry that the thread has been removed
+                _Registry.RemoveThread(thread.ThreadUri.ToString()); // Ensure thread URL is removed from the registry
             });
         }
 
@@ -167,6 +158,10 @@ namespace oChan
                     {
                         UrlList.Remove(threadToRemove);
                         threadToRemove.NotifyThreadRemoval(true); // Pass true to indicate manual removal
+
+                        // Notify the Registry to remove the thread URL from tracking
+                        _Registry.RemoveThread(thread.ThreadUri.ToString());
+
                         Log.Information("Thread with URL {ThreadUri} removed successfully.", thread.ThreadUri);
                     }
                     else
@@ -227,6 +222,22 @@ namespace oChan
                     }
                 }
             }
+        }
+
+        // Event handler for the "Settings" menu item
+        private void OnSettingsMenuItemClick(object sender, RoutedEventArgs e)
+        {
+            // Assuming you have SettingsWindow implemented
+            var settingsWindow = new SettingsWindow();
+            settingsWindow.ShowDialog(this);
+        }
+
+        // Event handler for the "About" menu item
+        private void OnAboutMenuItemClick(object sender, RoutedEventArgs e)
+        {
+            // Assuming you have AboutWindow implemented
+            var aboutWindow = new AboutWindow();
+            aboutWindow.ShowDialog(this);
         }
     }
 }

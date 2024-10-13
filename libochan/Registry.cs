@@ -13,6 +13,7 @@ namespace oChan
         private readonly Dictionary<Type, IImageBoard> _registeredImageBoards = new();
         private readonly HashSet<string> _processedThreadUrls = new();  // Keep track of added thread URLs
         private readonly HashSet<string> _processedBoardUrls = new();   // Keep track of added board URLs
+        private readonly Dictionary<string, IThread> _activeThreads = new(); // Track active threads by URL
 
         public Registry()
         {
@@ -95,6 +96,7 @@ namespace oChan
 
                     IThread thread = imageBoard.GetThread(uri);
                     _processedThreadUrls.Add(url);  // Mark the URL as processed
+                    _activeThreads[url] = thread;   // Store the active thread
 
                     return thread;
                 }
@@ -102,6 +104,29 @@ namespace oChan
 
             Log.Warning("No image board found for thread URL: {Url}", url);
             return null;
+        }
+
+        // Remove a thread URL from the processed list and active threads
+        public void RemoveThread(string url)
+        {
+            if (_processedThreadUrls.Contains(url))
+            {
+                _processedThreadUrls.Remove(url);
+                Log.Error("Removed thread URL {Url} from processed list.", url);
+
+            }
+            else
+            {
+                Log.Warning("Attempted to remove thread URL {Url} that was not processed.", url);
+            }
+
+            // Ensure the thread is also removed from active threads
+            if (_activeThreads.ContainsKey(url))
+            {
+                _activeThreads.Remove(url);
+                Log.Information("Removed thread {Url} from active threads.", url);
+            }
+            Log.Warning(" HANDLING REMOVE THREAD URL {url}");
         }
 
         // Get a board instance for a given board URL and prevent duplicate entries
@@ -145,6 +170,20 @@ namespace oChan
 
             Log.Warning("No image board found for board URL: {Url}", url);
             return null;
+        }
+
+        // Remove a board URL from the processed list
+        public void RemoveBoard(string url)
+        {
+            if (_processedBoardUrls.Contains(url))
+            {
+                _processedBoardUrls.Remove(url);
+                Log.Information("Removed board URL {Url} from processed list.", url);
+            }
+            else
+            {
+                Log.Warning("Attempted to remove board URL {Url} that was not processed.", url);
+            }
         }
     }
 }
