@@ -23,12 +23,17 @@
             </Grid.RowDefinitions>
 
             <!-- URL Input Section -->
-            <StackPanel Grid.Row="0">
-                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                    <TextBox x:Name="UrlInput" Width="655" Watermark="Enter Thread or Board URL here ..." />
-                    <Button x:Name="AddUrlButton" Content="Add" Margin="10,0,0,0" Width="100" Click="OnAddUrl"/>
-                </StackPanel>
-            </StackPanel>
+            <Grid Grid.Row="0" Margin="8,0,8,0">
+                <Grid.ColumnDefinitions>
+                    <!-- TextBox will take up remaining space -->
+                    <ColumnDefinition Width="*" />
+                    <!-- Button will have a fixed width -->
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <TextBox x:Name="UrlInput" Grid.Column="0" Watermark="Enter Thread or Board URL here ..." />
+                <Button x:Name="AddUrlButton" Grid.Column="1" Content="Add" Margin="10,0,0,0" Width="100" Click="OnAddUrl"/>
+            </Grid>
 
             <!-- Tabs for Threads and Boards -->
             <TabControl Grid.Row="1" Margin="0,10,0,0">
