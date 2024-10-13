@@ -70,7 +70,7 @@ namespace oChan
                             UrlList.Add(thread);
                         });
 
-                        thread.ThreadRemoved += OnThreadRemoved;
+                        thread.ThreadRemoved += (thread) => OnThreadRemoved(thread, false);
 
                         ArchiveOptions options = new ArchiveOptions
                         {
@@ -124,11 +124,15 @@ namespace oChan
         }
 
         // Handle thread removal
-        private void OnThreadRemoved(IThread thread)
+        private void OnThreadRemoved(IThread thread, bool abort)
         {
             Dispatcher.UIThread.Post(() =>
             {
                 Log.Information("Removing thread {ThreadId} from the UI.", thread.ThreadId);
+                if (abort)
+                {
+                    sharedDownloadQueue.CancelDownloadsForThread(thread); // Cancel all downloads for this thread
+                }
                 UrlList.Remove(thread);
             });
         }
@@ -139,7 +143,7 @@ namespace oChan
             {
                 var thread = e.Thread;
                 UrlList.Add(thread);
-                thread.ThreadRemoved += OnThreadRemoved;
+                thread.ThreadRemoved += (thread) => OnThreadRemoved(thread, false);
 
                 ArchiveOptions options = new ArchiveOptions
                 {
@@ -162,6 +166,7 @@ namespace oChan
                     if (threadToRemove != null)
                     {
                         UrlList.Remove(threadToRemove);
+                        threadToRemove.NotifyThreadRemoval(true); // Pass true to indicate manual removal
                         Log.Information("Thread with URL {ThreadUri} removed successfully.", thread.ThreadUri);
                     }
                     else
@@ -175,8 +180,6 @@ namespace oChan
         // Event handler for the "Remove" MenuItem click
         private void OnRemoveThreadMenuItemClick(object sender, RoutedEventArgs e)
         {
-            Log.Error("REMOVECLICK");
-
             if (sender is MenuItem menuItem)
             {
                 var dataGrid = this.FindControl<DataGrid>("ThreadsDataGrid");
@@ -184,8 +187,7 @@ namespace oChan
                 {
                     if (dataGrid.SelectedItem is IThread thread)
                     {
-                        Log.Error($"Right-clicked thread URL: {thread.ThreadUri}");
-                        RemoveThread(thread);
+                        RemoveThread(thread); // Pass the thread to remove it
                     }
                     else
                     {

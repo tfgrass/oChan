@@ -50,22 +50,23 @@ public class DownloadWorker
 
             using HttpResponseMessage response = await httpClient.GetAsync(_downloadItem.DownloadUri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
 
-            // Handle 404 status code or cancellation
-            if (response.StatusCode == HttpStatusCode.NotFound || cancellationToken.IsCancellationRequested)
+            // Handle 404 status code
+            if (response.StatusCode == HttpStatusCode.NotFound)
             {
-                Log.Warning("Thread {ThreadId} returned 404 or was cancelled, notifying removal.", _downloadItem.Thread.ThreadId);
-                _downloadItem.Thread.NotifyThreadRemoval(); // Notify that the thread should be removed
+                Log.Warning("Thread {ThreadId} returned 404 (not found), notifying removal.", _downloadItem.Thread.ThreadId);
+                _downloadItem.Thread.NotifyThreadRemoval(false); // Thread removal due to 404, not manual
+                return;
+            }
+
+            // Handle cancellation (check if manual)
+            if (cancellationToken.IsCancellationRequested)
+            {
+                Log.Information("Download for {DownloadUri} was cancelled.", _downloadItem.DownloadUri);
+                _downloadItem.Thread.NotifyThreadRemoval(true); // Manual removal
                 return;
             }
 
             response.EnsureSuccessStatusCode();
-
-            // Handle cancellation
-            if (cancellationToken.IsCancellationRequested)
-            {
-                Log.Information("Download for {DownloadUri} cancelled.", _downloadItem.DownloadUri);
-                return;
-            }
 
             string directory = Path.GetDirectoryName(_downloadItem?.DestinationPath) ?? string.Empty;
             if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
@@ -93,7 +94,6 @@ public class DownloadWorker
             catch (IOException ioEx)
             {
                 Log.Warning("File access issue occurred for {FilePath}, exiting downloader.", _downloadItem.DestinationPath);
-
                 Log.Verbose(ioEx, "File access issue occurred for {FilePath}, exiting downloader.", _downloadItem.DestinationPath);
                 return; // Exit the downloader gracefully
             }

@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using oChan.Interfaces;
 using Serilog;
 
 /// <summary>
@@ -175,6 +176,30 @@ public class DownloadQueue
 
             _parallelDownloadsSemaphore.Release();
             StartWorkersIfNeeded(); // Check if there are more items to process
+        }
+    }
+
+    /// <summary>
+    /// Cancels all downloads for the specified thread.
+    /// </summary>
+    /// <param name="thread">The thread for which downloads should be canceled.</param>
+    public void CancelDownloadsForThread(IThread thread)
+    {
+        if (thread == null)
+        {
+            Log.Error("Attempted to cancel downloads for a null thread.");
+            return;
+        }
+
+        Log.Information("Canceling all downloads for thread {ThreadId}", thread.ThreadId);
+
+        foreach (var (item, cancellationToken) in _downloadQueue)
+        {
+            if (item.Thread == thread)
+            {
+                Log.Information("Canceling download for {DownloadUri} associated with thread {ThreadId}", item.DownloadUri, thread.ThreadId);
+                cancellationToken.ThrowIfCancellationRequested();
+            }
         }
     }
 
