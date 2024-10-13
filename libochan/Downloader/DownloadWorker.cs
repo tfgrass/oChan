@@ -50,15 +50,22 @@ public class DownloadWorker
 
             using HttpResponseMessage response = await httpClient.GetAsync(_downloadItem.DownloadUri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
 
-            // Handle 404 status code
-            if (response.StatusCode == HttpStatusCode.NotFound)
+            // Handle 404 status code or cancellation
+            if (response.StatusCode == HttpStatusCode.NotFound || cancellationToken.IsCancellationRequested)
             {
-                Log.Warning("Thread {ThreadId} returned 404, notifying removal.", _downloadItem.Thread.ThreadId);
+                Log.Warning("Thread {ThreadId} returned 404 or was cancelled, notifying removal.", _downloadItem.Thread.ThreadId);
                 _downloadItem.Thread.NotifyThreadRemoval(); // Notify that the thread should be removed
                 return;
             }
 
             response.EnsureSuccessStatusCode();
+
+            // Handle cancellation
+            if (cancellationToken.IsCancellationRequested)
+            {
+                Log.Information("Download for {DownloadUri} cancelled.", _downloadItem.DownloadUri);
+                return;
+            }
 
             string directory = Path.GetDirectoryName(_downloadItem?.DestinationPath) ?? string.Empty;
             if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
@@ -68,8 +75,7 @@ public class DownloadWorker
             }
 
             using Stream contentStream = await response.Content.ReadAsStreamAsync(cancellationToken);
-            
-            // Handle file access exception and exit gracefully
+
             try
             {
                 using FileStream fileStream = new FileStream(_downloadItem?.DestinationPath ?? throw new ArgumentNullException(nameof(_downloadItem.DestinationPath)),

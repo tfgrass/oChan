@@ -13,7 +13,7 @@ using Serilog;
 public class DownloadQueue
 {
     private readonly SemaphoreSlim _parallelDownloadsSemaphore;
-    private readonly ConcurrentQueue<DownloadItem> _downloadQueue;
+    private readonly ConcurrentQueue<(DownloadItem, CancellationToken)> _downloadQueue;
     private readonly BandwidthLimiter _bandwidthLimiter;
     private readonly CancellationTokenSource _cts;
     private readonly List<Task> _workerTasks;
@@ -41,7 +41,7 @@ public class DownloadQueue
         MaxBandwidthBytesPerSecond = maxBandwidthBytesPerSecond;
 
         _parallelDownloadsSemaphore = new SemaphoreSlim(MaxParallelDownloads, MaxParallelDownloads);
-        _downloadQueue = new ConcurrentQueue<DownloadItem>();
+        _downloadQueue = new ConcurrentQueue<(DownloadItem, CancellationToken)>();
         _queuedUrls = new HashSet<string>();      // Initialize the set to track enqueued URLs
         _downloadingUrls = new HashSet<string>(); // Initialize the set to track currently downloading URLs
         _bandwidthLimiter = new BandwidthLimiter(MaxBandwidthBytesPerSecond);
@@ -92,11 +92,19 @@ public class DownloadQueue
             return; // Skip if the item is already enqueued or downloading
         }
 
-        // Add to queue and downloading sets
+        var cancellationTokenSource = new CancellationTokenSource();
+
+        // Register event listener for thread removal
+        item.Thread.ThreadRemoved += (thread) =>
+        {
+            Log.Information("Thread {ThreadId} removed. Cancelling downloads for this thread.", thread.ThreadId);
+            cancellationTokenSource.Cancel(); // Cancel all downloads for this thread
+        };
+
         _queuedUrls.Add(url);
         _downloadingUrls.Add(url);
 
-        _downloadQueue.Enqueue(item);
+        _downloadQueue.Enqueue((item, cancellationTokenSource.Token));
         Log.Debug("Enqueued DownloadItem: {DownloadUri}", item.DownloadUri);
         StartWorkersIfNeeded();
     }
@@ -113,11 +121,11 @@ public class DownloadQueue
             {
                 _parallelDownloadsSemaphore.Wait();
 
-                if (_downloadQueue.TryDequeue(out DownloadItem? downloadItem))
+                if (_downloadQueue.TryDequeue(out (DownloadItem, CancellationToken) downloadItemPair))
                 {
-                    Log.Debug("Starting download task for {DownloadUri}", downloadItem.DownloadUri);
+                    Log.Debug("Starting download task for {DownloadUri}", downloadItemPair.Item1.DownloadUri);
 
-                    Task task = Task.Run(() => ProcessDownloadItemAsync(downloadItem));
+                    Task task = Task.Run(() => ProcessDownloadItemAsync(downloadItemPair));
                     _workerTasks.Add(task);
 
                     // Clean up completed tasks
@@ -137,16 +145,21 @@ public class DownloadQueue
     /// <summary>
     /// Processes a single download item.
     /// </summary>
-    private async Task ProcessDownloadItemAsync(DownloadItem item)
+    private async Task ProcessDownloadItemAsync((DownloadItem, CancellationToken) downloadItemPair)
     {
+        var (item, token) = downloadItemPair;
         try
         {
             Log.Information("Starting download for {DownloadUri}", item.DownloadUri);
 
             DownloadWorker downloadWorker = new DownloadWorker(item, _bandwidthLimiter);
-            await downloadWorker.ExecuteAsync(_cts.Token);
+            await downloadWorker.ExecuteAsync(token);
 
             Log.Information("Completed download for {DownloadUri}", item.DownloadUri);
+        }
+        catch (OperationCanceledException)
+        {
+            Log.Information("Download for {DownloadUri} was cancelled.", item.DownloadUri);
         }
         catch (Exception ex)
         {
