@@ -9,7 +9,7 @@ namespace oChan
 
     public class Registry
     {
-        // Store singleton instances of image boards in a dictionary
+        private readonly Config _config;  // Config object to store app settings
         private readonly Dictionary<Type, IImageBoard> _registeredImageBoards = new();
         private readonly HashSet<string> _processedThreadUrls = new();  // Keep track of added thread URLs
         private readonly HashSet<string> _processedBoardUrls = new();   // Keep track of added board URLs
@@ -17,16 +17,27 @@ namespace oChan
 
         public Registry()
         {
+            // Set up logging configuration
             Log.Logger = new LoggerConfiguration()
-                .MinimumLevel.Debug() // Set the minimum log level
+                .MinimumLevel.Debug()   // Set the minimum log level
                 .WriteTo.Console()      // Output logs to the console
                 .CreateLogger();
 
             Log.Information("Registry initialized with logging configured.");
 
+            // Initialize the Config object by loading from file or creating default
+            _config = Config.LoadConfig();
+            Log.Information("Configuration loaded.");
+
+            // Print out loaded config (for debug purposes)
+            _config.PrintConfig();
+
             // Register image boards here
             RegisterImageBoards();
         }
+
+        // Method to expose the Config object so it can be used elsewhere
+        public Config GetConfig() => _config;
 
         private void RegisterImageBoards()
         {
@@ -36,10 +47,10 @@ namespace oChan
             // Register 8kun
             RegisterImageBoard(new EightKunImageBoard());
 
-            // ... other image boards
+            // Register other image boards here if needed
         }
 
-        // Register a new image board in the registry (by instance)
+        // Register a new image board in the registry
         private void RegisterImageBoard(IImageBoard imageBoard)
         {
             if (imageBoard == null)
@@ -112,7 +123,6 @@ namespace oChan
             if (_processedThreadUrls.Contains(url))
             {
                 _processedThreadUrls.Remove(url);
-
             }
             else
             {
