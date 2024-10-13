@@ -1,13 +1,15 @@
-using System;
-using System.Threading.Tasks;
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Markup.Xaml;
 using Avalonia.Interactivity;
+using Avalonia.Input;
 using Avalonia.Threading;
 using System.Collections.ObjectModel;
-using System.Windows.Input;
+using System.Linq; // For LINQ methods
 using oChan.Downloader;
 using oChan.Interfaces;
 using Serilog;
+using System;
 
 namespace oChan
 {
@@ -15,14 +17,13 @@ namespace oChan
     {
         public ObservableCollection<IThread> UrlList { get; set; }
         public ObservableCollection<IBoard> BoardsList { get; set; }
-        public ICommand RemoveThreadCommand { get; }
 
         private Registry _Registry;
         private DownloadQueue sharedDownloadQueue;
 
         public MainWindow()
         {
-
+            InitializeComponent();
 
             // Initialize the registry
             _Registry = new Registry();
@@ -36,13 +37,9 @@ namespace oChan
             // Initialize shared download queue
             sharedDownloadQueue = new DownloadQueue(5, 1024 * 1024 * 10); // Adjust as needed
 
-            // Define the RemoveThreadCommand and bind the method to it
-            RemoveThreadCommand = new RelayCommand<IThread>(RemoveThread);
-
-                        InitializeComponent();
-
             // Set the DataContext to the window itself
             this.DataContext = this;
+
             // Wire up event handlers for buttons and menu items
             var addUrlButton = this.FindControl<Button>("AddUrlButton");
             addUrlButton.Click += OnAddUrl;
@@ -52,8 +49,6 @@ namespace oChan
 
             var aboutMenuItem = this.FindControl<MenuItem>("AboutMenuItem");
             aboutMenuItem.Click += OnAboutMenuItemClick;
-
-
         }
 
         // Event handler for the "Add" button
@@ -154,41 +149,82 @@ namespace oChan
             });
         }
 
-        // Method to remove a thread
+        // Method to remove a thread based on ThreadUrl
         private void RemoveThread(IThread thread)
         {
             if (thread != null)
             {
-                Log.Information("Manually removing thread {ThreadId} from UI", thread.ThreadId);
+                Log.Information("Manually removing thread with URL: {ThreadUri}", thread.ThreadUri);
                 Dispatcher.UIThread.Post(() =>
                 {
-                    UrlList.Remove(thread);
+                    // Search for the thread in UrlList based on ThreadUrl
+                    var threadToRemove = UrlList.FirstOrDefault(t => t.ThreadUri == thread.ThreadUri);
+                    if (threadToRemove != null)
+                    {
+                        UrlList.Remove(threadToRemove);
+                        Log.Information("Thread with URL {ThreadUri} removed successfully.", thread.ThreadUri);
+                    }
+                    else
+                    {
+                        Log.Warning("Thread with URL {ThreadUri} not found in UrlList.", thread.ThreadUri);
+                    }
                 });
             }
         }
-    }
 
-    // Simple relay command implementation
-    public class RelayCommand<T> : ICommand
-    {
-        private readonly Action<T> _execute;
-        private readonly Func<T, bool>? _canExecute;
-
-        public RelayCommand(Action<T> execute, Func<T, bool>? canExecute = null)
+        // Event handler for the "Remove" MenuItem click
+        private void OnRemoveThreadMenuItemClick(object sender, RoutedEventArgs e)
         {
-            _execute = execute ?? throw new ArgumentNullException(nameof(execute));
-            _canExecute = canExecute;
+            Log.Error("REMOVECLICK");
+
+            if (sender is MenuItem menuItem)
+            {
+                var dataGrid = this.FindControl<DataGrid>("ThreadsDataGrid");
+                if (dataGrid != null)
+                {
+                    if (dataGrid.SelectedItem is IThread thread)
+                    {
+                        Log.Error($"Right-clicked thread URL: {thread.ThreadUri}");
+                        RemoveThread(thread);
+                    }
+                    else
+                    {
+                        Log.Error("DataGrid SelectedItem is not an IThread instance.");
+                    }
+                }
+                else
+                {
+                    Log.Error("ThreadsDataGrid not found.");
+                }
+            }
+            else
+            {
+                Log.Error("Sender is not a MenuItem.");
+            }
         }
 
-        public bool CanExecute(object? parameter) => _canExecute == null || _canExecute((T)parameter!);
-
-        public void Execute(object? parameter) => _execute((T)parameter!);
-
-        public event EventHandler? CanExecuteChanged;
-
-        public void RaiseCanExecuteChanged()
+        // Event handler to select row on right-click
+        private void OnDataGridPointerPressed(object sender, PointerPressedEventArgs e)
         {
-            CanExecuteChanged?.Invoke(this, EventArgs.Empty);
+            if (sender is DataGrid dataGrid)
+            {
+                // Get the current pointer point relative to the DataGrid
+                var pointerPoint = e.GetCurrentPoint(dataGrid);
+
+                // Check if the right mouse button is pressed
+                if (pointerPoint.Properties.IsRightButtonPressed)
+                {
+                    var point = e.GetPosition(dataGrid);
+
+                    // Perform hit testing to determine which element was clicked
+                    var hitTestResult = dataGrid.InputHitTest(point);
+                    if (hitTestResult is DataGridRow row)
+                    {
+                        // Select the row that was right-clicked
+                        dataGrid.SelectedItem = row.DataContext;
+                    }
+                }
+            }
         }
     }
 }

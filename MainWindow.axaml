@@ -41,24 +41,50 @@
                               GridLinesVisibility="All"
                               IsReadOnly="True"
                               SelectionMode="Single"
-                              Tag="{Binding RelativeSource={RelativeSource AncestorType=Window}}"
-                              >
+                              PointerPressed="OnDataGridPointerPressed">
                         <DataGrid.Columns>
-                            <!-- Define columns as needed -->
-                            <DataGridTextColumn Header="Thread ID" Binding="{Binding ThreadId}" />
-                            <DataGridTextColumn Header="Title" Binding="{Binding Title}" />
-                            <DataGridTextColumn Header="Status" Binding="{Binding Status}" />
-                            <DataGridTextColumn Header="Progress" Binding="{Binding Progress}" />
+                            <!-- Thread ID Column -->
+                            <DataGridTemplateColumn Header="Thread ID">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate x:DataType="interfaces:IThread">
+                                        <TextBlock Text="{Binding ThreadId}" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+
+                            <!-- Title Column -->
+                            <DataGridTemplateColumn Header="Title">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate x:DataType="interfaces:IThread">
+                                        <TextBlock Text="{Binding Title}" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+
+                            <!-- Status Column -->
+                            <DataGridTemplateColumn Header="Status">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate x:DataType="interfaces:IThread">
+                                        <TextBlock Text="{Binding Status}" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+
+                            <!-- Progress Column -->
+                            <DataGridTemplateColumn Header="Progress">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate x:DataType="interfaces:IThread">
+                                        <TextBlock Text="{Binding Progress}" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
                         </DataGrid.Columns>
 
                         <!-- ContextMenu for right-clicking on a row -->
                         <DataGrid.ContextMenu>
-                            <ContextMenu x:Name="ThreadContextMenu"
-                                         DataContext="{Binding PlacementTarget.Tag, RelativeSource={RelativeSource Self}}"
-                                         x:DataType="local:MainWindow">
+                            <ContextMenu>
                                 <MenuItem Header="Remove"
-                                          Command="{Binding RemoveThreadCommand}"
-                                          CommandParameter="{Binding}"/>
+                                          Click="OnRemoveThreadMenuItemClick" />
                             </ContextMenu>
                         </DataGrid.ContextMenu>
                     </DataGrid>
@@ -73,7 +99,14 @@
                               CanUserSortColumns="True"
                               HeadersVisibility="All">
                         <DataGrid.Columns>
-                            <DataGridTextColumn Header="Board URL" Binding="{Binding BoardUri}" Width="200" />
+                            <!-- Board URL Column -->
+                            <DataGridTemplateColumn Header="Board URL" Width="200">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate x:DataType="interfaces:IBoard">
+                                        <TextBlock Text="{Binding BoardUri}" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
                         </DataGrid.Columns>
                     </DataGrid>
                 </TabItem>
