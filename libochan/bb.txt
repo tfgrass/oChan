@@ -1,0 +1,2100 @@
+File Path: ./bb.txt
+File Path: ./Utils.cs
+namespace oChan;
+
+using System;
+using System.IO;
+
+public static class Utils
+{
+    public static string ToHumanReadableSize(long bytes)
+    {
+        string[] sizes = { "B", "KB", "MB", "GB", "TB" };
+        double len = bytes;
+        int order = 0;
+        while (len >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            len /= 1024;
+        }
+        return $"{len:0.##} {sizes[order]}";
+    }
+}
+public static class PathSanitizer
+{
+    public static string SanitizePath(string path)
+    {
+        // Remove invalid characters
+        char[] invalidChars = Path.GetInvalidPathChars();
+        foreach (char c in invalidChars)
+        {
+            path = path.Replace(c.ToString(), "");
+        }
+
+        return path;
+    }
+}
+
+---------------------------
+File Path: ./Interfaces/IBoard.cs
+using System;
+using System.Threading.Tasks;
+using System.Collections.Generic;
+using oChan.Downloader;
+
+namespace oChan.Interfaces
+{
+    /// <summary>
+    /// Represents a specific board within an imageboard platform (e.g., "/g/" on 4chan).
+    /// </summary>
+    public interface IBoard
+    {
+        /// <summary>
+        /// Gets the parent imageboard.
+        /// </summary>
+        IImageBoard ImageBoard { get; }
+
+        /// <summary>
+        /// Gets the board code (e.g., "g" for /g/).
+        /// </summary>
+        string BoardCode { get; }
+
+        /// <summary>
+        /// Gets the name of the board (e.g., "Technology").
+        /// </summary>
+        string Name { get; }
+
+        /// <summary>
+        /// Gets a user-friendly name for the board.
+        /// </summary>
+        string NiceName { get; }
+
+        /// <summary>
+        /// Gets the URI of the board.
+        /// </summary>
+        Uri BoardUri { get; }
+
+        /// <summary>
+        /// Fetches the threads on the board.
+        /// </summary>
+        /// <returns>A task representing the asynchronous operation, containing a collection of <see cref="IThread"/> instances.</returns>
+        Task<IEnumerable<IThread>> GetThreadsAsync();
+
+        /// <summary>
+        /// Archives the board content based on the provided options.
+        /// </summary>
+        /// <param name="options">The archiving options.</param>
+        /// <returns>A task representing the asynchronous operation.</returns>
+        Task ArchiveAsync(ArchiveOptions options);
+
+        /// <summary>
+        /// Starts monitoring the board for new threads.
+        /// </summary>
+        /// <param name="intervalInSeconds">The interval in seconds between checks.</param>
+        void StartMonitoring(int intervalInSeconds);
+
+        /// <summary>
+        /// Stops monitoring the board.
+        /// </summary>
+        void StopMonitoring();
+
+        /// <summary>
+        /// Occurs when a new thread is discovered on the board.
+        /// </summary>
+        event EventHandler<ThreadEventArgs> ThreadDiscovered;
+    }
+}
+
+---------------------------
+File Path: ./Interfaces/IThread.cs
+using System;
+using System.Threading.Tasks;
+using System.Collections.Generic;
+using System.ComponentModel;
+using oChan.Downloader;
+
+namespace oChan.Interfaces
+{
+    /// <summary>
+    /// Represents a specific thread within a board.
+    /// </summary>
+    public interface IThread : INotifyPropertyChanged
+    {
+        /// <summary>
+        /// Gets the parent board.
+        /// </summary>
+        IBoard Board { get; }
+        event Action<IThread> ThreadRemoved;
+        /// <summary>
+        /// Gets the unique identifier of the thread.
+        /// </summary>
+        string ThreadId { get; }
+
+        /// <summary>
+        /// Gets or sets the title or subject of the thread.
+        /// </summary>
+        string Title { get; set; }
+
+        /// <summary>
+        /// Gets a user-friendly name for the thread.
+        /// </summary>
+        string NiceName { get; }
+
+        /// <summary>
+        /// Gets the URI of the thread.
+        /// </summary>
+        Uri ThreadUri { get; }
+
+        /// <summary>
+        /// Gets or sets the status of the thread.
+        /// </summary>
+        string Status { get; set; }
+
+        /// <summary>
+        /// Gets the progress of media downloads.
+        /// </summary>
+        string Progress { get; }
+
+        /// <summary>
+        /// Gets the URL of the thread.
+        /// </summary>
+        string Url { get; }
+
+        /// <summary>
+        /// Archives the thread content based on the provided options.
+        /// </summary>
+        /// <param name="options">The archiving options.</param>
+        /// <returns>A task representing the asynchronous operation.</returns>
+        Task ArchiveAsync(ArchiveOptions options);
+
+        /// <summary>
+        /// Enqueues media files in the thread for downloading.
+        /// </summary>
+        /// <param name="queue">The downloader queue to enqueue downloads to.</param>
+        /// <returns>A task representing the asynchronous operation.</returns>
+        Task EnqueueMediaDownloadsAsync(DownloadQueue queue);
+
+        /// <summary>
+        /// Gets or sets the collection of media identifiers that have been downloaded.
+        /// </summary>
+        HashSet<string> DownloadedMedia { get; set; }
+
+        /// <summary>
+        /// Checks if a media item has been downloaded.
+        /// </summary>
+        /// <param name="mediaIdentifier">The unique identifier of the media item.</param>
+        /// <returns>True if the media item has been downloaded; otherwise, false.</returns>
+        bool IsMediaDownloaded(string mediaIdentifier);
+
+        /// <summary>
+        /// Marks a media item as downloaded.
+        /// </summary>
+        /// <param name="mediaIdentifier">The unique identifier of the media item.</param>
+        void MarkMediaAsDownloaded(string mediaIdentifier);
+
+        /// <summary>
+        /// Rechecks the thread for new posts and updates the download queue with new media.
+        /// </summary>
+        /// <param name="queue">The downloader queue to enqueue downloads to.</param>
+        /// <returns>A task representing the asynchronous operation.</returns>
+        Task checkThreadAsync(DownloadQueue queue);
+
+        /// <summary>
+        /// Loads the set of previously downloaded media from the filesystem (e.g., from .downloaded.json).
+        /// </summary>
+        /// <returns>A task representing the asynchronous operation.</returns>
+        Task LoadDownloadedMediaAsync();
+
+        /// <summary>
+        /// Saves the set of downloaded media to the filesystem (e.g., to .downloaded.json).
+        /// </summary>
+        /// <returns>A task representing the asynchronous operation.</returns>
+        Task SaveDownloadedMediaAsync();
+
+        /// <summary>
+        /// Notifies that the thread should be removed (e.g., when a 404 occurs).
+        /// </summary>
+        void NotifyThreadRemoval();
+    }
+}
+---------------------------
+File Path: ./Interfaces/ThreadEventArgs.cs
+﻿using System;
+
+namespace oChan.Interfaces
+{
+    /// <summary>
+    /// Provides data for the ThreadDiscovered event.
+    /// </summary>
+    public class ThreadEventArgs : EventArgs
+    {
+        /// <summary>
+        /// Gets the thread that was discovered.
+        /// </summary>
+        public IThread Thread { get; }
+
+        /// <summary>
+        /// Initializes a new instance of the ThreadEventArgs class.
+        /// </summary>
+        /// <param name="thread">The thread that was discovered.</param>
+        public ThreadEventArgs(IThread thread)
+        {
+            Thread = thread;
+        }
+    }
+}---------------------------
+File Path: ./Interfaces/IImageBoard.cs
+// File Path: ./Interfaces/IImageBoard.cs
+
+using System;
+using System.Net.Http;
+
+namespace oChan.Interfaces
+{
+    public interface IImageBoard
+    {
+        string Name { get; }
+        string NiceName { get; }
+        Uri BaseUri { get; }
+
+        bool CanHandle(Uri uri);
+
+        bool IsThreadUri(Uri uri);
+        bool IsBoardUri(Uri uri);
+
+        IBoard GetBoard(Uri boardUri);
+        IThread GetThread(Uri threadUri);
+
+        HttpClient GetHttpClient();
+    }
+}
+---------------------------
+File Path: ./Boards/EightKun/EightKunThread.cs
+namespace oChan.Boards.EightKun;
+
+using System;
+using System.IO;
+using System.Net.Http;
+using System.Threading.Tasks;
+using System.Collections.Generic;
+using System.Text.RegularExpressions;
+using Newtonsoft.Json.Linq;
+using oChan.Boards.Base;
+using oChan.Downloader;
+using oChan.Interfaces;
+using Serilog;
+
+public class EightKunThread : BaseThread
+{
+    public override IBoard Board { get; }
+    public override string ThreadId { get; }
+    public override string Title { get; set; }
+    public override string NiceName => $"{Title} ({ThreadId})";
+    public override Uri ThreadUri { get; }
+
+    public EightKunThread(IBoard board, Uri threadUri)
+    {
+        Board = board ?? throw new ArgumentNullException(nameof(board));
+        ThreadUri = threadUri ?? throw new ArgumentNullException(nameof(threadUri));
+
+        ThreadId = ExtractThreadId(threadUri);
+        Title = "Unknown";
+        Status = "Pending";
+        Log.Information("Initialized EightKunThread with ID: {ThreadId}", ThreadId);
+    }
+
+    private bool _isChecking = false;
+
+    public override async Task checkThreadAsync(DownloadQueue queue)
+    {
+        if (_isChecking)
+        {
+            Log.Warning("Recheck for thread {ThreadId} is already in progress. Skipping new recheck.", ThreadId);
+            return; // Prevent overlapping rechecks
+        }
+
+        _isChecking = true; // Mark that a recheck is in progress
+        Status = "Checking"; // Update the status to "Rechecking"
+
+        try
+        {
+            await base.checkThreadAsync(queue);
+
+            Log.Debug("Enqueuing media downloads for thread {ThreadId}", ThreadId);
+
+            HttpClient client = Board.ImageBoard.GetHttpClient();
+            string apiUrl = ThreadUri.ToString().Replace(".html", ".json");
+            HttpResponseMessage response = await client.GetAsync(apiUrl);
+            response.EnsureSuccessStatusCode();
+            string jsonContent = await response.Content.ReadAsStringAsync();
+
+            JObject threadData = JObject.Parse(jsonContent);
+
+            int previousTotalMediaCount = TotalMediaCount; // Preserve previous counts
+            int newMediaCount = 0;
+            HashSet<string> uniqueImageUrls = new HashSet<string>();
+
+            foreach (JToken post in threadData["posts"])
+            {
+                newMediaCount += ProcessPostMedia(post, queue, uniqueImageUrls);
+            }
+
+            if (newMediaCount > 0)
+            {
+                TotalMediaCount = previousTotalMediaCount + newMediaCount;
+                Status = "Downloading"; // Only set to "Downloading" if new media is enqueued
+            }
+
+            Log.Information("Recheck complete for thread {ThreadId}: Enqueued {NewMediaCount} new media downloads", ThreadId, newMediaCount);
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Error enqueuing media downloads for thread {ThreadId}: {Message}", ThreadId, ex.Message);
+        }
+        finally
+        {
+            _isChecking = false; // Mark that the recheck is finished
+        }
+
+        if (DownloadedMediaCount == TotalMediaCount && TotalMediaCount > 0)
+        {
+            Status = "Finished"; 
+        }
+        else if (TotalMediaCount == 0)
+        {
+            Status = "No media found"; 
+        }
+    }
+
+    private int ProcessPostMedia(JToken post, DownloadQueue queue, HashSet<string> uniqueImageUrls)
+    {
+        int newMediaCount = 0;
+
+        if (post["tim"] != null && post["ext"] != null)
+        {
+            string mediaIdentifier = post["tim"].ToString();
+            string ext = post["ext"].ToString();
+            string imageUrl = $"https://media.128ducks.com/file_store/{mediaIdentifier}{ext}";
+
+            if (!IsMediaDownloaded(mediaIdentifier) && !queue.IsInQueue(imageUrl) && !uniqueImageUrls.Contains(imageUrl))
+            {
+                // Use the board's unique filename
+                string fileName = $"{mediaIdentifier}{ext}";
+                fileName = SanitizeFileName(fileName);
+                string destinationPath = Path.Combine("Downloads", Board.BoardCode, ThreadId, fileName);
+
+                DownloadItem downloadItem = new DownloadItem(new Uri(imageUrl), destinationPath, Board.ImageBoard, this, mediaIdentifier);
+                queue.EnqueueDownload(downloadItem);
+                uniqueImageUrls.Add(imageUrl);
+                newMediaCount++;
+            }
+        }
+
+        if (post["extra_files"] != null)
+        {
+            foreach (JToken extraFile in post["extra_files"])
+            {
+                string mediaIdentifier = extraFile["tim"].ToString();
+                string ext = extraFile["ext"].ToString();
+                string imageUrl = $"https://media.128ducks.com/file_store/{mediaIdentifier}{ext}";
+
+                if (!IsMediaDownloaded(mediaIdentifier) && !queue.IsInQueue(imageUrl) && !uniqueImageUrls.Contains(imageUrl))
+                {
+                    // Use the board's unique filename
+                    string fileName = $"{mediaIdentifier}{ext}";
+                    fileName = SanitizeFileName(fileName);
+                    string destinationPath = Path.Combine("Downloads", Board.BoardCode, ThreadId, fileName);
+
+                    DownloadItem downloadItem = new DownloadItem(new Uri(imageUrl), destinationPath, Board.ImageBoard, this, mediaIdentifier);
+                    queue.EnqueueDownload(downloadItem);
+                    uniqueImageUrls.Add(imageUrl);
+                    newMediaCount++;
+                }
+            }
+        }
+
+        return newMediaCount;
+    }
+
+    private string ExtractMediaIdentifier(string mediaUrl)
+    {
+        Match match = Regex.Match(mediaUrl, @"file_store/(\w+)");
+        return match.Success ? match.Groups[1].Value : Guid.NewGuid().ToString();
+    }
+
+    private string ExtractThreadId(Uri threadUri)
+    {
+        Match match = Regex.Match(threadUri.AbsolutePath, @"res/(\d+)");
+        if (match.Success)
+        {
+            return match.Groups[1].Value;
+        }
+        else
+        {
+            Log.Error("Invalid thread URI: {ThreadUri}", threadUri);
+            throw new ArgumentException("Invalid thread URI", nameof(threadUri));
+        }
+    }
+
+    private string SanitizeFileName(string fileName)
+    {
+        // Replace any invalid file name characters with underscores
+        char[] invalidChars = Path.GetInvalidFileNameChars();
+        foreach (char c in invalidChars)
+        {
+            fileName = fileName.Replace(c, '_');
+        }
+        return fileName;
+    }
+}
+---------------------------
+File Path: ./Boards/EightKun/EightKunBoard.cs
+namespace oChan.Boards.EightKun;
+
+using System;
+using System.Net.Http;
+using System.Threading.Tasks;
+using System.Collections.Generic;
+using Newtonsoft.Json.Linq;
+using oChan.Boards.Base;
+using oChan.Interfaces;
+using Serilog;
+
+public class EightKunBoard : BaseBoard
+{
+    public override IImageBoard ImageBoard { get; }
+    public override string BoardCode { get; }
+    public override string Name { get; }
+    public override string NiceName => $"/{BoardCode}/ - {Name}";
+    public override Uri BoardUri { get; }
+
+    public EightKunBoard(IImageBoard imageBoard, Uri boardUri)
+    {
+        ImageBoard = imageBoard ?? throw new ArgumentNullException(nameof(imageBoard));
+        BoardUri = boardUri ?? throw new ArgumentNullException(nameof(boardUri));
+
+        BoardCode = ExtractBoardCode(boardUri);
+        Name = BoardCode;
+        Log.Information("Initialized EightKunBoard for /{BoardCode}/", BoardCode);
+    }
+
+    public override async Task<IEnumerable<IThread>> GetThreadsAsync()
+    {
+        Log.Debug("Fetching threads for board /{BoardCode}/", BoardCode);
+        List<IThread> threads = new List<IThread>();
+
+        try
+        {
+            HttpClient client = ImageBoard.GetHttpClient();
+            string catalogUrl = $"https://8kun.top/{BoardCode}/catalog.json";
+            HttpResponseMessage response = await client.GetAsync(catalogUrl);
+            response.EnsureSuccessStatusCode();
+
+            string json = await response.Content.ReadAsStringAsync();
+            JArray catalogData = JArray.Parse(json);
+
+            foreach (JToken page in catalogData)
+            {
+                foreach (JToken thread in page["threads"])
+                {
+                    string threadId = thread["no"].ToString();
+                    Uri threadUri = new Uri($"https://8kun.top/{BoardCode}/res/{threadId}.html");
+                    threads.Add(new EightKunThread(this, threadUri));
+                }
+            }
+
+            Log.Information("Fetched {ThreadCount} threads for board /{BoardCode}/", threads.Count, BoardCode);
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Error fetching threads for board /{BoardCode}/: {Message}", BoardCode, ex.Message);
+            throw;
+        }
+
+        return threads;
+    }
+
+    private string ExtractBoardCode(Uri boardUri)
+    {
+        string[] segments = boardUri.AbsolutePath.Trim('/').Split('/');
+        if (segments.Length > 0)
+        {
+            return segments[0];
+        }
+        else
+        {
+            Log.Error("Invalid board URI: {BoardUri}", boardUri);
+            throw new ArgumentException("Invalid board URI", nameof(boardUri));
+        }
+    }
+}
+---------------------------
+File Path: ./Boards/EightKun/EightKunImageBoard.cs
+// File Path: ./Boards/EightKun/EightKunImageBoard.cs
+
+using System;
+using System.Net.Http;
+using System.Text.RegularExpressions;
+using oChan.Boards.Base;
+using oChan.Interfaces;
+using Serilog;
+
+namespace oChan.Boards.EightKun
+{
+    public class EightKunImageBoard : BaseImageBoard
+    {
+        public override string Name => "8kun";
+        public override string NiceName => "8kun";
+        public override Uri BaseUri => new Uri("https://8kun.top");
+
+        public override bool CanHandle(Uri uri)
+        {
+            bool canHandle = uri.Host.Contains(BaseUri.Host);
+            Log.Debug("EightKunImageBoard CanHandle({Uri}) returned {Result}", uri, canHandle);
+            return canHandle;
+        }
+
+        public override bool IsThreadUri(Uri uri)
+        {
+            return Regex.IsMatch(uri.AbsolutePath, @"^/\w+/res/\d+\.html");
+        }
+
+        public override bool IsBoardUri(Uri uri)
+        {
+            return Regex.IsMatch(uri.AbsolutePath, @"^/\w+/?$");
+        }
+
+        public override IBoard GetBoard(Uri boardUri)
+        {
+            if (boardUri == null)
+            {
+                Log.Error("Board URI is null.");
+                throw new ArgumentNullException(nameof(boardUri));
+            }
+
+            Log.Information("Creating EightKunBoard for URI: {BoardUri}", boardUri);
+            return new EightKunBoard(this, boardUri);
+        }
+
+        public override IThread GetThread(Uri threadUri)
+        {
+            if (threadUri == null)
+            {
+                Log.Error("Thread URI is null.");
+                throw new ArgumentNullException(nameof(threadUri));
+            }
+
+            Log.Information("Creating EightKunThread for URI: {ThreadUri}", threadUri);
+
+            string boardPath = threadUri.AbsolutePath.Split("/res")[0];
+            Uri boardUri = new Uri($"https://8kun.top{boardPath}");
+            EightKunBoard board = (EightKunBoard)GetBoard(boardUri);
+
+            return new EightKunThread(board, threadUri);
+        }
+
+        public override HttpClient GetHttpClient()
+        {
+            HttpClient client = base.GetHttpClient();
+            client.DefaultRequestHeaders.UserAgent.ParseAdd(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+                "(KHTML, like Gecko) Chrome/85.0.4183.121 Safari/537.36");
+            Log.Debug("Configured HttpClient for EightKunImageBoard.");
+            return client;
+        }
+    }
+}
+---------------------------
+File Path: ./Boards/Base/BaseImageBoard.cs
+// File Path: ./Boards/Base/BaseImageBoard.cs
+
+using System;
+using System.Net.Http;
+using oChan.Interfaces;
+using Serilog;
+
+namespace oChan.Boards.Base
+{
+    /// <summary>
+    /// Base class for image boards, providing common functionality.
+    /// </summary>
+    public abstract class BaseImageBoard : IImageBoard
+    {
+        public abstract string Name { get; }
+        public abstract string NiceName { get; }
+        public abstract Uri BaseUri { get; }
+
+        public abstract bool CanHandle(Uri uri);
+        public abstract bool IsThreadUri(Uri uri);
+        public abstract bool IsBoardUri(Uri uri);
+
+        public abstract IBoard GetBoard(Uri boardUri);
+        public abstract IThread GetThread(Uri threadUri);
+
+        public virtual HttpClient GetHttpClient()
+        {
+            HttpClient client = new HttpClient();
+            // Set common headers or configurations if needed
+            Log.Debug("BaseImageBoard: Created HttpClient instance.");
+            return client;
+        }
+    }
+}
+---------------------------
+File Path: ./Boards/Base/BaseThread.cs
+namespace oChan.Boards.Base;
+
+using System;
+using System.IO;
+using System.ComponentModel;
+using System.Collections.Generic;
+using System.Runtime.CompilerServices;
+using System.Text.Json;
+using System.Threading.Tasks;
+using oChan.Downloader;
+using oChan.Interfaces;
+using Serilog;
+
+public abstract class BaseThread : IThread, INotifyPropertyChanged
+{
+    // Event that notifies when the thread should be removed
+    public event Action<IThread>? ThreadRemoved;
+
+    private Rechecker _rechecker;
+    private int _recheckIntervalInSeconds = 60; // Default recheck interval
+
+    public abstract IBoard Board { get; }
+    public abstract string ThreadId { get; }
+
+    private string _title;
+    public virtual string Title
+    {
+        get => _title;
+        set
+        {
+            if (_title != value)
+            {
+                _title = value;
+                OnPropertyChanged();
+            }
+        }
+    }
+
+    public abstract string NiceName { get; }
+    public abstract Uri ThreadUri { get; }
+
+    private string _status;
+    public string Status
+    {
+        get => _status;
+        set
+        {
+            if (_status != value)
+            {
+                _status = value;
+                OnPropertyChanged();
+                Log.Information("Thread {ThreadId} status changed to: {Status}", ThreadId, _status);
+            }
+        }
+    }
+
+    private int _totalMediaCount;
+    public int TotalMediaCount
+    {
+        get => _totalMediaCount;
+        set
+        {
+            if (_totalMediaCount != value)
+            {
+                _totalMediaCount = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(Progress));
+            }
+        }
+    }
+
+    public int DownloadedMediaCount => DownloadedMedia.Count;
+
+    public string Progress
+    {
+        get
+        {
+            if (TotalMediaCount == 0)
+                return "0 / 0 (0%)";
+            double percent = (double)DownloadedMediaCount / TotalMediaCount * 100;
+            return $"{DownloadedMediaCount} / {TotalMediaCount} ({percent:0.##}%)";
+        }
+    }
+
+    public string Url => ThreadUri.ToString();
+
+    public HashSet<string> DownloadedMedia { get; set; } = new HashSet<string>();
+
+    public virtual async Task ArchiveAsync(ArchiveOptions options)
+    {
+        Log.Information("Archiving thread {ThreadId} with options {Options}", ThreadId, options);
+        await Task.CompletedTask;
+    }
+
+    public virtual async Task checkThreadAsync(DownloadQueue queue)
+    {
+        Status = "Checking";
+        Log.Information("Starting recheck for thread {ThreadId}", ThreadId);
+
+        // This method is for logging purposes, and the actual checking will be done in the derived class
+        await Task.CompletedTask;
+
+        // After rechecking, if no new downloads are added, set the status back to "Finished"
+        if (DownloadedMediaCount == TotalMediaCount)
+        {
+            Status = "Finished";
+        }
+
+        Log.Information("Finished rechecking thread {ThreadId}", ThreadId);
+    }
+
+    public virtual async Task EnqueueMediaDownloadsAsync(DownloadQueue queue)
+    {
+        Log.Debug("Enqueuing media downloads for thread {ThreadId}", ThreadId);
+        await Task.CompletedTask;
+    }
+
+    public bool IsMediaDownloaded(string mediaIdentifier)
+    {
+        bool isDownloaded = DownloadedMedia.Contains(mediaIdentifier);
+        Log.Debug("Media {MediaId} downloaded: {IsDownloaded}", mediaIdentifier, isDownloaded);
+        return isDownloaded;
+    }
+
+    public void MarkMediaAsDownloaded(string mediaIdentifier)
+    {
+        // Ensure that the media is not already in the downloaded set before adding
+        if (!DownloadedMedia.Contains(mediaIdentifier) && DownloadedMedia.Add(mediaIdentifier))
+        {
+            OnPropertyChanged(nameof(DownloadedMediaCount));
+            OnPropertyChanged(nameof(Progress));
+
+            if (DownloadedMediaCount == TotalMediaCount)
+            {
+                Status = "Finished";
+            }
+        }
+        else
+        {
+            Log.Warning("Media {MediaId} already marked as downloaded for thread {ThreadId}", mediaIdentifier, ThreadId);
+        }
+    }
+
+    public async Task LoadDownloadedMediaAsync()
+    {
+        string filePath = Path.Combine("Downloads", Board.BoardCode, ThreadId, ".downloaded.json");
+
+        if (File.Exists(filePath))
+        {
+            try
+            {
+                string jsonContent = await File.ReadAllTextAsync(filePath);
+                HashSet<string> downloadedMedia = JsonSerializer.Deserialize<HashSet<string>>(jsonContent);
+                if (downloadedMedia != null)
+                {
+                    DownloadedMedia = downloadedMedia;
+                }
+
+                Log.Information("Loaded downloaded media for thread {ThreadId} from {FilePath}", ThreadId, filePath);
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Error loading downloaded media for thread {ThreadId} from {FilePath}", ThreadId, filePath);
+            }
+        }
+    }
+
+    public async Task SaveDownloadedMediaAsync()
+    {
+        string directoryPath = Path.Combine("Downloads", Board.BoardCode, ThreadId);
+        string filePath = Path.Combine(directoryPath, ".downloaded.json");
+
+        try
+        {
+            if (!Directory.Exists(directoryPath))
+            {
+                Directory.CreateDirectory(directoryPath);
+            }
+
+            string jsonContent = JsonSerializer.Serialize(DownloadedMedia);
+            await File.WriteAllTextAsync(filePath, jsonContent);
+
+            Log.Information("Saved downloaded media for thread {ThreadId} to {FilePath}", ThreadId, filePath);
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Error saving downloaded media for thread {ThreadId} to {FilePath}", ThreadId, filePath);
+        }
+    }
+
+    protected BaseThread()
+    {
+        StartRechecking(_recheckIntervalInSeconds);
+    }
+
+    public void StartRechecking(int intervalInSeconds)
+    {
+        if (_rechecker == null)
+        {
+            Log.Information("Starting immediate check for thread {ThreadId}", ThreadId);
+
+            Task.Run(async () =>
+            {
+                DownloadQueue queue = new DownloadQueue(5, 1024 * 1024); // Example queue
+                await checkThreadAsync(queue);
+            });
+
+            Log.Information("Starting rechecking for thread {ThreadId} with interval {IntervalInSeconds} seconds", ThreadId, intervalInSeconds);
+            _recheckIntervalInSeconds = intervalInSeconds;
+
+            _rechecker = new Rechecker(new List<IThread> { this }, _recheckIntervalInSeconds);
+        }
+        else
+        {
+            Log.Warning("Rechecker already running for thread {ThreadId}", ThreadId);
+        }
+    }
+
+    public void StopRechecking()
+    {
+        if (_rechecker != null)
+        {
+            _rechecker.StopRechecking();
+            _rechecker = null;
+            Log.Information("Stopped rechecking for thread {ThreadId}", ThreadId);
+        }
+    }
+
+    protected virtual int DefaultRecheckInterval => _recheckIntervalInSeconds;
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    protected void OnPropertyChanged([CallerMemberName] string? propertyName = null)
+    {
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+    }
+
+    public void NotifyThreadRemoval()
+    {
+        Log.Information("Notifying that thread {ThreadId} should be removed", ThreadId);
+        ThreadRemoved?.Invoke(this); // Notify whoever is subscribed to this event (UI or Registry)
+    }
+}
+---------------------------
+File Path: ./Boards/Base/BaseBoard.cs
+namespace oChan.Boards.Base;
+
+using System;
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
+using System.Threading.Tasks;
+using System.Collections.Generic;
+using oChan.Downloader;
+using oChan.Interfaces;
+using Serilog;
+using System.Timers;
+
+public abstract class BaseBoard : IBoard, INotifyPropertyChanged
+{
+    public abstract IImageBoard ImageBoard { get; }
+    public abstract string BoardCode { get; }
+    public abstract string Name { get; }
+    public abstract string NiceName { get; }
+    public abstract Uri BoardUri { get; }
+
+    public virtual async Task<IEnumerable<IThread>> GetThreadsAsync()
+    {
+        Log.Debug("Fetching threads for board {BoardCode}", BoardCode);
+        // Implement fetching logic
+        return await Task.FromResult(new List<IThread>());
+    }
+
+    public virtual async Task ArchiveAsync(ArchiveOptions options)
+    {
+        Log.Information("Archiving board {BoardCode} with options {Options}", BoardCode, options);
+        // Implement archiving logic
+        await Task.CompletedTask;
+    }
+    // Timer for monitoring
+    protected Timer _monitoringTimer;
+    protected int _monitoringIntervalInSeconds;
+
+    // HashSet to keep track of known thread IDs
+    protected HashSet<string> _knownThreadIds = new HashSet<string>();
+
+    public event EventHandler<ThreadEventArgs> ThreadDiscovered;
+
+    public virtual void StartMonitoring(int intervalInSeconds)
+    {
+        if (_monitoringTimer == null)
+        {
+            _monitoringIntervalInSeconds = intervalInSeconds;
+
+            _monitoringTimer = new Timer(_monitoringIntervalInSeconds * 1000);
+            _monitoringTimer.Elapsed += OnMonitoringEvent;
+            _monitoringTimer.AutoReset = true;
+            _monitoringTimer.Enabled = true;
+
+            Log.Information("Started monitoring board {BoardCode} with interval {Interval}s", BoardCode, intervalInSeconds);
+
+            // Start the initial check
+            Task.Run(async () => await CheckForNewThreadsAsync());
+        }
+        else
+        {
+            Log.Warning("Monitoring already started for board {BoardCode}", BoardCode);
+        }
+    }
+
+    public virtual void StopMonitoring()
+    {
+        if (_monitoringTimer != null)
+        {
+            _monitoringTimer.Stop();
+            _monitoringTimer.Dispose();
+            _monitoringTimer = null;
+            Log.Information("Stopped monitoring for board {BoardCode}", BoardCode);
+        }
+        else
+        {
+            Log.Warning("Monitoring not started for board {BoardCode}", BoardCode);
+        }
+    }
+
+    protected virtual async void OnMonitoringEvent(Object source, ElapsedEventArgs e)
+    {
+        await CheckForNewThreadsAsync();
+    }
+
+    protected virtual async Task CheckForNewThreadsAsync()
+    {
+        try
+        {
+            Log.Debug("Checking for new threads on board {BoardCode}", BoardCode);
+
+            IEnumerable<IThread> threads = await GetThreadsAsync();
+
+            foreach (IThread thread in threads)
+            {
+                if (!_knownThreadIds.Contains(thread.ThreadId))
+                {
+                    _knownThreadIds.Add(thread.ThreadId);
+
+                    // Raise the event
+                    ThreadDiscovered?.Invoke(this, new ThreadEventArgs(thread));
+
+                    Log.Information("New thread discovered: {ThreadId} on board {BoardCode}", thread.ThreadId, BoardCode);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Error checking for new threads on board {BoardCode}", BoardCode);
+        }
+    }
+
+    // Implementation of INotifyPropertyChanged
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    protected void OnPropertyChanged([CallerMemberName] string? propertyName = null)
+    {
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+    }
+}
+---------------------------
+File Path: ./Boards/FourChan/FourChanBoard.cs
+namespace oChan.Boards.FourChan;
+
+using System;
+using System.Net.Http;
+using System.Threading.Tasks;
+using System.Collections.Generic;
+using Newtonsoft.Json;
+using oChan.Boards.Base;
+using oChan.Interfaces;
+using Serilog;
+
+public class FourChanBoard : BaseBoard
+{
+    public override IImageBoard ImageBoard { get; }
+    public override string BoardCode { get; }
+    public override string Name { get; }
+    public override string NiceName => $"/{BoardCode}/ - {Name}";
+    public override Uri BoardUri { get; }
+
+    public FourChanBoard(IImageBoard imageBoard, Uri boardUri)
+    {
+        ImageBoard = imageBoard ?? throw new ArgumentNullException(nameof(imageBoard));
+        BoardUri = boardUri ?? throw new ArgumentNullException(nameof(boardUri));
+
+        // Extract board code from URI
+        BoardCode = ExtractBoardCode(boardUri);
+        Name = BoardCode; // 4chan doesn't provide board names in the URL
+        Log.Information("Initialized FourChanBoard for /{BoardCode}/", BoardCode);
+    }
+
+    public override async Task<IEnumerable<IThread>> GetThreadsAsync()
+    {
+        Log.Debug("Fetching threads for board /{BoardCode}/", BoardCode);
+        List<IThread> threads = new List<IThread>();
+
+        try
+        {
+            HttpClient client = ImageBoard.GetHttpClient();
+            string catalogUrl = $"https://a.4cdn.org/{BoardCode}/catalog.json";
+            HttpResponseMessage response = await client.GetAsync(catalogUrl);
+            response.EnsureSuccessStatusCode();
+
+            string json = await response.Content.ReadAsStringAsync();
+            List<dynamic> catalogData = JsonConvert.DeserializeObject<List<dynamic>>(json);
+
+            if (catalogData == null)
+            {
+                Log.Error("Failed to deserialize catalog data for board /{BoardCode}/", BoardCode);
+                throw new Exception("Catalog data is null.");
+            }
+
+            foreach (dynamic page in catalogData)
+            {
+                if (page.threads == null) continue;
+
+                foreach (dynamic thread in page.threads)
+                {
+                    string threadId = thread.no.ToString();
+                    Uri threadUri = new Uri($"https://boards.4chan.org/{BoardCode}/thread/{threadId}");
+                    threads.Add(new FourChanThread(this, threadUri));
+                }
+            }
+
+            Log.Information("Fetched {ThreadCount} threads for board /{BoardCode}/", threads.Count, BoardCode);
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Error fetching threads for board /{BoardCode}/: {Message}", BoardCode, ex.Message);
+            throw;
+        }
+
+        return threads;
+    }
+
+    private string ExtractBoardCode(Uri boardUri)
+    {
+        string[] segments = boardUri.AbsolutePath.Trim('/').Split('/');
+        if (segments.Length > 0)
+        {
+            return segments[0];
+        }
+        else
+        {
+            Log.Error("Invalid board URI: {BoardUri}", boardUri);
+            throw new ArgumentException("Invalid board URI", nameof(boardUri));
+        }
+    }
+}
+---------------------------
+File Path: ./Boards/FourChan/FourChanThread.cs
+namespace oChan.Boards.FourChan;
+
+using System;
+using System.IO;
+using System.Linq;
+using System.Net.Http;
+using System.Threading.Tasks;
+using System.Collections.Generic;
+using System.Text.RegularExpressions;
+using Newtonsoft.Json.Linq;
+using oChan.Downloader;
+using oChan.Interfaces;
+using oChan.Boards.Base;
+using Serilog;
+
+public class FourChanThread : BaseThread
+{
+    public override IBoard Board { get; }
+    public override string ThreadId { get; }
+    public override string Title { get; set; }
+    public override string NiceName => $"{Title} ({ThreadId})";
+    public override Uri ThreadUri { get; }
+
+    public FourChanThread(IBoard board, Uri threadUri)
+    {
+        Board = board ?? throw new ArgumentNullException(nameof(board));
+        ThreadUri = threadUri ?? throw new ArgumentNullException(nameof(threadUri));
+
+        ThreadId = ExtractThreadId(threadUri);
+        Title = "Unknown";
+        Status = "Pending";
+        Log.Information("Initialized FourChanThread with ID: {ThreadId}", ThreadId);
+    }
+
+    public override async Task checkThreadAsync(DownloadQueue queue)
+    {
+        Status = "Checking";
+        await base.checkThreadAsync(queue);
+
+        Log.Debug("Enqueuing media downloads for thread {ThreadId}", ThreadId);
+
+        try
+        {
+            HttpClient client = Board.ImageBoard.GetHttpClient();
+            string boardCode = ((FourChanBoard)Board).BoardCode;
+            string threadJsonUrl = $"https://a.4cdn.org/{boardCode}/thread/{ThreadId}.json";
+            HttpResponseMessage response = await client.GetAsync(threadJsonUrl);
+            response.EnsureSuccessStatusCode();
+
+            string json = await response.Content.ReadAsStringAsync();
+            JObject threadData = JObject.Parse(json);
+
+            Title = threadData["posts"]?[0]?["sub"]?.ToString() ?? $"Thread {ThreadId}";
+
+            JArray posts = threadData["posts"] as JArray;
+            if (posts == null)
+            {
+                Log.Error("No 'posts' found in thread data for thread {ThreadId}", ThreadId);
+                throw new Exception("Thread data does not contain 'posts'.");
+            }
+
+            IEnumerable<dynamic> postsWithImages = posts
+                .Where(x => x["ext"] != null && x["tim"] != null && x["filename"] != null)
+                .Select(x => new
+                {
+                    Tim = x.Value<long?>("tim") ?? 0,
+                    Ext = x.Value<string>("ext") ?? string.Empty,
+                    Filename = x.Value<string>("filename") ?? "unknown"
+                });
+
+            TotalMediaCount = postsWithImages.Count();
+
+            if (TotalMediaCount > 0)
+            {
+                Status = "Downloading"; 
+            }
+
+            foreach (dynamic post in postsWithImages)
+            {
+                if (string.IsNullOrWhiteSpace(post.Ext) || post.Tim == 0) continue;
+
+                string mediaIdentifier = post.Tim.ToString();
+
+                if (IsMediaDownloaded(mediaIdentifier) || queue.IsInQueue($"https://i.4cdn.org/{boardCode}/{post.Tim}{post.Ext}"))
+                {
+                    Log.Debug("Skipping already downloaded or enqueued media {MediaIdentifier} for thread {ThreadId}", mediaIdentifier, ThreadId);
+                    continue;
+                }
+
+                string imageUrl = $"https://i.4cdn.org/{boardCode}/{post.Tim}{post.Ext}";
+                string destinationPath = Path.Combine("Downloads", boardCode, ThreadId, $"{post.Filename}{post.Ext}");
+
+                DownloadItem downloadItem = new DownloadItem(new Uri(imageUrl), destinationPath, Board.ImageBoard, this, mediaIdentifier);
+                queue.EnqueueDownload(downloadItem);
+                Log.Debug("Enqueued download for image {ImageUrl}", imageUrl);
+            }
+
+            Log.Information("Recheck complete for thread {ThreadId}: Enqueued all new media downloads", ThreadId);
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Error enqueuing media downloads for thread {ThreadId}: {Message}", ThreadId, ex.Message);
+        }
+
+        if (DownloadedMediaCount == TotalMediaCount)
+        {
+            Status = "Finished";
+        }
+    }
+
+    private string ExtractThreadId(Uri threadUri)
+    {
+        Match match = Regex.Match(threadUri.AbsolutePath, @"thread/(\d+)");
+        if (match.Success)
+        {
+            return match.Groups[1].Value;
+        }
+        else
+        {
+            Log.Error("Invalid thread URI: {ThreadUri}", threadUri);
+            throw new ArgumentException("Invalid thread URI", nameof(threadUri));
+        }
+    }
+}
+---------------------------
+File Path: ./Boards/FourChan/FourChanImageBoard.cs
+// File Path: ./Boards/FourChan/FourChanImageBoard.cs
+
+using System;
+using System.Net.Http;
+using System.Text.RegularExpressions;
+using oChan.Boards.Base;
+using oChan.Interfaces;
+using Serilog;
+
+namespace oChan.Boards.FourChan
+{
+    public class FourChanImageBoard : BaseImageBoard
+    {
+        public override string Name => "4chan";
+        public override string NiceName => "4chan";
+        public override Uri BaseUri => new Uri("https://boards.4chan.org");
+
+        public override bool CanHandle(Uri uri)
+        {
+            bool canHandle = uri.Host.Contains(BaseUri.Host);
+            Log.Debug("FourChanImageBoard CanHandle({Uri}) returned {Result}", uri, canHandle);
+            return canHandle;
+        }
+
+        public override bool IsThreadUri(Uri uri)
+        {
+            return Regex.IsMatch(uri.AbsolutePath, @"^/\w+/thread/\d+");
+        }
+
+        public override bool IsBoardUri(Uri uri)
+        {
+            return Regex.IsMatch(uri.AbsolutePath, @"^/\w+/?$");
+        }
+
+        public override IBoard GetBoard(Uri boardUri)
+        {
+            if (boardUri == null)
+            {
+                Log.Error("Board URI is null.");
+                throw new ArgumentNullException(nameof(boardUri));
+            }
+
+            Log.Information("Creating FourChanBoard for URI: {BoardUri}", boardUri);
+            return new FourChanBoard(this, boardUri);
+        }
+
+        public override IThread GetThread(Uri threadUri)
+        {
+            if (threadUri == null)
+            {
+                Log.Error("Thread URI is null.");
+                throw new ArgumentNullException(nameof(threadUri));
+            }
+
+            Log.Information("Creating FourChanThread for URI: {ThreadUri}", threadUri);
+
+            // Extract board code from the thread URI to create the board instance
+            string boardPath = threadUri.AbsolutePath.Split("/thread")[0];
+            Uri boardUri = new Uri($"https://boards.4chan.org{boardPath}");
+            FourChanBoard board = (FourChanBoard)GetBoard(boardUri);
+
+            return new FourChanThread(board, threadUri);
+        }
+
+        public override HttpClient GetHttpClient()
+        {
+            HttpClient client = base.GetHttpClient();
+            // Set a User-Agent to mimic a browser
+            client.DefaultRequestHeaders.UserAgent.ParseAdd(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+                "(KHTML, like Gecko) Chrome/85.0.4183.121 Safari/537.36");
+            Log.Debug("Configured HttpClient for FourChanImageBoard.");
+            return client;
+        }
+    }
+}
+---------------------------
+File Path: ./Downloader/BandWidthLimiter.cs
+namespace oChan.Downloader;
+
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+using Serilog;
+
+
+public class BandwidthLimiter
+{
+    private readonly SemaphoreSlim _semaphore = new SemaphoreSlim(1, 1);
+    private long _maxBytesPerSecond;
+    private long _bytesDownloadedThisSecond;
+    private DateTime _currentSecondStart;
+
+    public BandwidthLimiter(long maxBytesPerSecond)
+    {
+        if (maxBytesPerSecond <= 0)
+        {
+            Log.Error("Attempted to initialize BandwidthLimiter with non-positive maxBytesPerSecond: {MaxBytesPerSecond}", maxBytesPerSecond);
+            throw new ArgumentException("Max bytes per second must be greater than zero.");
+        }
+
+        _maxBytesPerSecond = maxBytesPerSecond;
+        _currentSecondStart = DateTime.UtcNow;
+
+        Log.Information("Initialized BandwidthLimiter with maxBytesPerSecond: {MaxBytesPerSecond} ({HumanReadableMaxBytesPerSecond})", _maxBytesPerSecond, Utils.ToHumanReadableSize(_maxBytesPerSecond));
+    }
+
+    public void UpdateMaxBytesPerSecond(long newMax)
+    {
+        if (newMax <= 0)
+        {
+            Log.Error("Attempted to update maxBytesPerSecond to non-positive value: {NewMax}", newMax);
+            throw new ArgumentException("Max bytes per second must be greater than zero.");
+        }
+
+        Log.Information("Updating maxBytesPerSecond from {OldMax} ({HumanReadableOldMax}) to {NewMax} ({HumanReadableNewMax})",
+            _maxBytesPerSecond, Utils.ToHumanReadableSize(_maxBytesPerSecond), newMax, Utils.ToHumanReadableSize(newMax));
+        _maxBytesPerSecond = newMax;
+    }
+
+    public async Task ThrottleAsync(int bytesDownloaded, CancellationToken cancellationToken)
+    {
+        Log.Verbose("ThrottleAsync called with bytesDownloaded: {BytesDownloaded} ({HumanReadableBytesDownloaded})", bytesDownloaded, Utils.ToHumanReadableSize(bytesDownloaded));
+
+        await _semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            DateTime now = DateTime.UtcNow;
+
+            if ((now - _currentSecondStart).TotalSeconds >= 1)
+            {
+                Log.Debug("One second has passed. Resetting counters.");
+                // Reset the counter every second
+                _currentSecondStart = now;
+                _bytesDownloadedThisSecond = 0;
+            }
+
+            _bytesDownloadedThisSecond += bytesDownloaded;
+            Log.Verbose("Updated bytesDownloadedThisSecond: {BytesDownloadedThisSecond} ({HumanReadableBytesDownloadedThisSecond})",
+                _bytesDownloadedThisSecond, Utils.ToHumanReadableSize(_bytesDownloadedThisSecond));
+
+            if (_bytesDownloadedThisSecond > _maxBytesPerSecond)
+            {
+                // Calculate delay
+                int delay = (int)(1000 - (now - _currentSecondStart).TotalMilliseconds);
+                if (delay > 0)
+                {
+                    Log.Debug("Throttling download. Sleeping for {Delay} milliseconds.", delay);
+                    await Task.Delay(delay, cancellationToken);
+                }
+                else
+                {
+                    Log.Verbose("No delay required. Continuing without delay.");
+                }
+                // Reset counters after delay
+                _currentSecondStart = DateTime.UtcNow;
+                _bytesDownloadedThisSecond = 0;
+            }
+        }
+        finally
+        {
+            _semaphore.Release();
+            Log.Verbose("Semaphore released in ThrottleAsync.");
+        }
+    }
+}
+
+---------------------------
+File Path: ./Downloader/Rechecker.cs
+namespace oChan.Downloader;
+using System;
+using System.Collections.Generic;
+using System.Timers;
+using oChan.Interfaces;
+using Serilog;
+
+public class Rechecker
+{
+    private readonly Timer _recheckTimer;
+    private readonly List<IThread> _threadsToMonitor;
+
+    public Rechecker(List<IThread> threads, int intervalInSeconds)
+    {
+        _threadsToMonitor = threads ?? throw new ArgumentNullException(nameof(threads));
+
+        // Set up a timer with the specified interval in seconds
+        _recheckTimer = new Timer(intervalInSeconds * 1000); // Convert seconds to milliseconds
+        _recheckTimer.Elapsed += OnRecheckEvent;
+        _recheckTimer.AutoReset = true; // Recheck periodically
+        _recheckTimer.Enabled = true; // Start the timer
+
+        Log.Information("Rechecker initialized with interval: {Interval} seconds", intervalInSeconds);
+    }
+
+    // Event triggered on timer interval
+    private async void OnRecheckEvent(Object source, ElapsedEventArgs e)
+    {
+        Log.Information("Rechecking threads...");
+
+        foreach (IThread thread in _threadsToMonitor)
+        {
+            try
+            {
+                DownloadQueue queue = new DownloadQueue(5, 1024 * 1024); // Example queue for rechecking
+                await thread.checkThreadAsync(queue);
+                Log.Information("Rechecked thread {ThreadId}", thread.ThreadId);
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Error rechecking thread {ThreadId}", thread.ThreadId);
+            }
+        }
+    }
+
+    // Stop the rechecking process when necessary
+    public void StopRechecking()
+    {
+        _recheckTimer.Stop();
+        Log.Information("Rechecker stopped.");
+    }
+}
+---------------------------
+File Path: ./Downloader/DownloadWorker.cs
+namespace oChan.Downloader;
+
+using System;
+using System.IO;
+using System.Net.Http;
+using System.Net;
+using System.Threading;
+using System.Threading.Tasks;
+using Serilog;
+
+public class DownloadWorker
+{
+    private readonly DownloadItem _downloadItem;
+    private readonly BandwidthLimiter _bandwidthLimiter;
+
+    public DownloadWorker(DownloadItem downloadItem, BandwidthLimiter bandwidthLimiter)
+    {
+        if (downloadItem == null)
+        {
+            Log.Error("DownloadItem is null in DownloadWorker constructor.");
+            throw new ArgumentNullException(nameof(downloadItem));
+        }
+
+        if (bandwidthLimiter == null)
+        {
+            Log.Error("BandwidthLimiter is null in DownloadWorker constructor.");
+            throw new ArgumentNullException(nameof(bandwidthLimiter));
+        }
+
+        _downloadItem = downloadItem;
+        _bandwidthLimiter = bandwidthLimiter;
+
+        Log.Debug("Created DownloadWorker for {DownloadUri}", _downloadItem.DownloadUri);
+    }
+
+    public async Task ExecuteAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (_downloadItem.Thread.IsMediaDownloaded(_downloadItem.MediaIdentifier))
+            {
+                Log.Information("Media {MediaIdentifier} already downloaded for thread {ThreadId}, skipping download.",
+                    _downloadItem.MediaIdentifier, _downloadItem.Thread.ThreadId);
+                return;
+            }
+
+            Log.Debug("Starting execution of DownloadWorker for {DownloadUri}", _downloadItem.DownloadUri);
+
+            HttpClient httpClient = _downloadItem.ImageBoard.GetHttpClient();
+
+            using HttpResponseMessage response = await httpClient.GetAsync(_downloadItem.DownloadUri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+
+            // Handle 404 status code
+            if (response.StatusCode == HttpStatusCode.NotFound)
+            {
+                Log.Warning("Thread {ThreadId} returned 404, notifying removal.", _downloadItem.Thread.ThreadId);
+                _downloadItem.Thread.NotifyThreadRemoval(); // Notify that the thread should be removed
+                return;
+            }
+
+            response.EnsureSuccessStatusCode();
+
+            string directory = Path.GetDirectoryName(_downloadItem?.DestinationPath) ?? string.Empty;
+            if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
+            {
+                Log.Debug("Creating directory {Directory}", directory);
+                Directory.CreateDirectory(directory);
+            }
+
+            using Stream contentStream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            
+            // Handle file access exception and exit gracefully
+            try
+            {
+                using FileStream fileStream = new FileStream(_downloadItem?.DestinationPath ?? throw new ArgumentNullException(nameof(_downloadItem.DestinationPath)),
+                    FileMode.Create, FileAccess.Write, FileShare.None);
+
+                Log.Debug("Beginning file copy to {DestinationPath}", _downloadItem.DestinationPath);
+
+                long totalBytes = await CopyToAsync(contentStream, fileStream, 81920, cancellationToken);
+
+                Log.Information("Successfully downloaded {DownloadUri} to {DestinationPath}. File size: {TotalBytes} bytes ({HumanReadableTotalBytes})",
+                    _downloadItem.DownloadUri, _downloadItem.DestinationPath, totalBytes, Utils.ToHumanReadableSize(totalBytes));
+
+                _downloadItem.Thread.MarkMediaAsDownloaded(_downloadItem.MediaIdentifier);
+            }
+            catch (IOException ioEx)
+            {
+                Log.Warning("File access issue occurred for {FilePath}, exiting downloader.", _downloadItem.DestinationPath);
+
+                Log.Verbose(ioEx, "File access issue occurred for {FilePath}, exiting downloader.", _downloadItem.DestinationPath);
+                return; // Exit the downloader gracefully
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Error executing download for {DownloadUri}: {Message}", _downloadItem.DownloadUri, ex.Message);
+            throw;
+        }
+    }
+
+    private async Task<long> CopyToAsync(Stream source, Stream destination, int bufferSize, CancellationToken cancellationToken)
+    {
+        byte[] buffer = new byte[bufferSize];
+        int bytesRead;
+        long totalBytes = 0;
+
+        while ((bytesRead = await source.ReadAsync(buffer.AsMemory(0, bufferSize), cancellationToken)) > 0)
+        {
+            await _bandwidthLimiter.ThrottleAsync(bytesRead, cancellationToken);
+            await destination.WriteAsync(buffer.AsMemory(0, bytesRead), cancellationToken);
+
+            totalBytes += bytesRead; // Accumulate total bytes
+        }
+
+        Log.Debug("Completed file copy. Total bytes copied: {TotalBytes} bytes", totalBytes);
+
+        return totalBytes; // Return total bytes for logging in ExecuteAsync
+    }
+}
+---------------------------
+File Path: ./Downloader/ArchiveOptions.cs
+namespace oChan.Downloader;
+
+/// <summary>
+/// Represents options for archiving content.
+/// </summary>
+public class ArchiveOptions
+{
+    /// <summary>
+    /// Gets or sets a value indicating whether to include HTML content in the archive.
+    /// </summary>
+    public bool IncludeHtml { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether to include media files in the archive.
+    /// </summary>
+    public bool IncludeMedia { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether to rewrite URLs for offline viewing.
+    /// </summary>
+    public bool RewriteUrls { get; set; }
+
+    /// <summary>
+    /// Gets or sets the output directory where archived content will be saved.
+    /// </summary>
+    public string OutputDirectory { get; set; }
+
+    /// <summary>
+    /// Gets or sets the download queue used for managing downloads.
+    /// </summary>
+    public DownloadQueue DownloadQueue { get; set; }
+
+    public ArchiveOptions()
+    {
+        // Assign default values or make them configurable
+        OutputDirectory = "Downloads"; // Default output directory
+        DownloadQueue = new DownloadQueue(5, 1024 * 1024 * 10); // Default settings for download queue, 10mb/s
+    }
+}
+
+---------------------------
+File Path: ./Downloader/DownloadItem.cs
+namespace oChan.Downloader;
+
+using System;
+using oChan.Interfaces;
+using Serilog;
+
+public class DownloadItem
+{
+    public Uri DownloadUri { get; }
+    public string DestinationPath { get; }
+    public IImageBoard ImageBoard { get; }
+    public IThread Thread { get; }
+    public string MediaIdentifier { get; }
+
+    public DownloadItem(Uri downloadUri, string destinationPath, IImageBoard imageBoard, IThread thread, string mediaIdentifier)
+    {
+        if (downloadUri == null)
+        {
+            Log.Error("DownloadUri is null in DownloadItem constructor.");
+            throw new ArgumentNullException(nameof(downloadUri));
+        }
+
+        if (string.IsNullOrEmpty(destinationPath))
+        {
+            Log.Error("DestinationPath is null or empty in DownloadItem constructor.");
+            throw new ArgumentNullException(nameof(destinationPath));
+        }
+
+        if (imageBoard == null)
+        {
+            Log.Error("ImageBoard is null in DownloadItem constructor.");
+            throw new ArgumentNullException(nameof(imageBoard));
+        }
+
+        if (thread == null)
+        {
+            Log.Error("Thread is null in DownloadItem constructor.");
+            throw new ArgumentNullException(nameof(thread));
+        }
+
+        if (string.IsNullOrEmpty(mediaIdentifier))
+        {
+            Log.Error("MediaIdentifier is null or empty in DownloadItem constructor.");
+            throw new ArgumentNullException(nameof(mediaIdentifier));
+        }
+
+        // Ensure that the path is properly formatted and sanitized
+        DestinationPath = PathSanitizer.SanitizePath(destinationPath);
+
+        DownloadUri = downloadUri;
+        ImageBoard = imageBoard;
+        Thread = thread;
+        MediaIdentifier = mediaIdentifier;
+
+        Log.Information("Created DownloadItem for URI: {DownloadUri}, Destination: {DestinationPath}", DownloadUri, DestinationPath);
+    }
+}
+---------------------------
+File Path: ./Downloader/DownloadQueue.cs
+namespace oChan.Downloader;
+
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using Serilog;
+
+/// <summary>
+/// Manages the queue of download tasks.
+/// </summary>
+public class DownloadQueue
+{
+    private readonly SemaphoreSlim _parallelDownloadsSemaphore;
+    private readonly ConcurrentQueue<DownloadItem> _downloadQueue;
+    private readonly BandwidthLimiter _bandwidthLimiter;
+    private readonly CancellationTokenSource _cts;
+    private readonly List<Task> _workerTasks;
+    private readonly HashSet<string> _queuedUrls;      // Track URLs that are enqueued
+    private readonly HashSet<string> _downloadingUrls; // Track URLs that are currently being downloaded
+
+    public int MaxParallelDownloads { get; private set; }
+    public long MaxBandwidthBytesPerSecond { get; private set; }
+
+    public DownloadQueue(int maxParallelDownloads, long maxBandwidthBytesPerSecond)
+    {
+        if (maxParallelDownloads <= 0)
+        {
+            Log.Error("Invalid MaxParallelDownloads: {MaxParallelDownloads}", maxParallelDownloads);
+            throw new ArgumentException("Max parallel downloads must be greater than zero.");
+        }
+
+        if (maxBandwidthBytesPerSecond <= 0)
+        {
+            Log.Error("Invalid MaxBandwidthBytesPerSecond: {MaxBandwidthBytesPerSecond}", maxBandwidthBytesPerSecond);
+            throw new ArgumentException("Max bandwidth must be greater than zero.");
+        }
+
+        MaxParallelDownloads = maxParallelDownloads;
+        MaxBandwidthBytesPerSecond = maxBandwidthBytesPerSecond;
+
+        _parallelDownloadsSemaphore = new SemaphoreSlim(MaxParallelDownloads, MaxParallelDownloads);
+        _downloadQueue = new ConcurrentQueue<DownloadItem>();
+        _queuedUrls = new HashSet<string>();      // Initialize the set to track enqueued URLs
+        _downloadingUrls = new HashSet<string>(); // Initialize the set to track currently downloading URLs
+        _bandwidthLimiter = new BandwidthLimiter(MaxBandwidthBytesPerSecond);
+        _cts = new CancellationTokenSource();
+        _workerTasks = new List<Task>();
+
+        Log.Information("Initialized DownloadQueue with MaxParallelDownloads: {MaxParallelDownloads}, MaxBandwidthBytesPerSecond: {MaxBandwidthBytesPerSecond}",
+            MaxParallelDownloads, MaxBandwidthBytesPerSecond);
+    }
+
+    /// <summary>
+    /// Checks if a URL is already enqueued in the download queue.
+    /// </summary>
+    /// <param name="url">The URL of the media item.</param>
+    /// <returns>True if the URL is already in the queue; otherwise, false.</returns>
+    public bool IsInQueue(string url)
+    {
+        return _queuedUrls.Contains(url); // Check if the URL exists in the enqueued set
+    }
+
+    /// <summary>
+    /// Checks if a URL is already being downloaded.
+    /// </summary>
+    /// <param name="url">The URL of the media item.</param>
+    /// <returns>True if the URL is currently downloading; otherwise, false.</returns>
+    public bool IsDownloading(string url)
+    {
+        return _downloadingUrls.Contains(url); // Check if the URL exists in the downloading set
+    }
+
+    /// <summary>
+    /// Enqueues a download item to the queue.
+    /// </summary>
+    public void EnqueueDownload(DownloadItem item)
+    {
+        if (item == null)
+        {
+            Log.Error("Attempted to enqueue a null DownloadItem.");
+            throw new ArgumentNullException(nameof(item));
+        }
+
+        string url = item.DownloadUri.ToString();
+
+        // Check if the URL is either already in the queue or currently downloading
+        if (IsInQueue(url) || IsDownloading(url))
+        {
+            Log.Warning("DownloadItem for {DownloadUri} is already in queue or downloading", url);
+            return; // Skip if the item is already enqueued or downloading
+        }
+
+        // Add to queue and downloading sets
+        _queuedUrls.Add(url);
+        _downloadingUrls.Add(url);
+
+        _downloadQueue.Enqueue(item);
+        Log.Debug("Enqueued DownloadItem: {DownloadUri}", item.DownloadUri);
+        StartWorkersIfNeeded();
+    }
+
+    /// <summary>
+    /// Starts worker tasks if there are available slots.
+    /// </summary>
+    private void StartWorkersIfNeeded()
+    {
+        lock (_workerTasks)
+        {
+            // Start worker tasks while there are available slots and items in the queue
+            while (_parallelDownloadsSemaphore.CurrentCount > 0 && !_downloadQueue.IsEmpty)
+            {
+                _parallelDownloadsSemaphore.Wait();
+
+                if (_downloadQueue.TryDequeue(out DownloadItem? downloadItem))
+                {
+                    Log.Debug("Starting download task for {DownloadUri}", downloadItem.DownloadUri);
+
+                    Task task = Task.Run(() => ProcessDownloadItemAsync(downloadItem));
+                    _workerTasks.Add(task);
+
+                    // Clean up completed tasks
+                    _workerTasks.RemoveAll(t => t.IsCompleted);
+
+                    Log.Debug("Current active worker tasks: {ActiveTasksCount}", _workerTasks.Count);
+                }
+                else
+                {
+                    Log.Debug("No DownloadItem available in queue to dequeue.");
+                    _parallelDownloadsSemaphore.Release();
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Processes a single download item.
+    /// </summary>
+    private async Task ProcessDownloadItemAsync(DownloadItem item)
+    {
+        try
+        {
+            Log.Information("Starting download for {DownloadUri}", item.DownloadUri);
+
+            DownloadWorker downloadWorker = new DownloadWorker(item, _bandwidthLimiter);
+            await downloadWorker.ExecuteAsync(_cts.Token);
+
+            Log.Information("Completed download for {DownloadUri}", item.DownloadUri);
+        }
+        catch (Exception ex)
+        {
+            // Handle exceptions (log, retry logic, etc.)
+            Log.Error(ex, "Error downloading {DownloadUri}: {Message}", item.DownloadUri, ex.Message);
+        }
+        finally
+        {
+            // Remove the URL from the queue and downloading sets after processing
+            string url = item.DownloadUri.ToString();
+            _queuedUrls.Remove(url);
+            _downloadingUrls.Remove(url);
+
+            _parallelDownloadsSemaphore.Release();
+            StartWorkersIfNeeded(); // Check if there are more items to process
+        }
+    }
+
+    /// <summary>
+    /// Stops all downloads and cancels running tasks.
+    /// </summary>
+    public void StopAll()
+    {
+        Log.Warning("Stopping all downloads and cancelling tasks.");
+        _cts.Cancel();
+    }
+
+    /// <summary>
+    /// Updates the maximum number of parallel downloads.
+    /// </summary>
+    public void UpdateMaxParallelDownloads(int newMax)
+    {
+        if (newMax <= 0)
+        {
+            Log.Error("Attempted to set invalid MaxParallelDownloads: {NewMax}", newMax);
+            throw new ArgumentException("Max parallel downloads must be greater than zero.");
+        }
+
+        Log.Information("Updating MaxParallelDownloads from {OldMax} to {NewMax}", MaxParallelDownloads, newMax);
+
+        MaxParallelDownloads = newMax;
+        _parallelDownloadsSemaphore.Release(newMax - _parallelDownloadsSemaphore.CurrentCount);
+        StartWorkersIfNeeded();
+    }
+
+    /// <summary>
+    /// Updates the maximum bandwidth usage.
+    /// </summary>
+    public void UpdateMaxBandwidth(long newMaxBytesPerSecond)
+    {
+        if (newMaxBytesPerSecond <= 0)
+        {
+            Log.Error("Attempted to set invalid MaxBandwidthBytesPerSecond: {NewMaxBytesPerSecond}", newMaxBytesPerSecond);
+            throw new ArgumentException("Max bandwidth must be greater than zero.");
+        }
+
+        Log.Information("Updating MaxBandwidthBytesPerSecond from {OldMax} to {NewMax}", MaxBandwidthBytesPerSecond, newMaxBytesPerSecond);
+
+        MaxBandwidthBytesPerSecond = newMaxBytesPerSecond;
+        _bandwidthLimiter.UpdateMaxBytesPerSecond(newMaxBytesPerSecond);
+    }
+}
+---------------------------
+File Path: ./Registry.cs
+namespace oChan
+{
+    using System;
+    using System.Collections.Generic;
+    using Serilog;
+    using oChan.Interfaces;
+    using oChan.Boards.FourChan;
+    using oChan.Boards.EightKun;
+
+    public class Registry
+    {
+        // Store singleton instances of image boards in a dictionary
+        private readonly Dictionary<Type, IImageBoard> _registeredImageBoards = new();
+        private readonly HashSet<string> _processedThreadUrls = new();  // Keep track of added thread URLs
+        private readonly HashSet<string> _processedBoardUrls = new();   // Keep track of added board URLs
+
+        public Registry()
+        {
+            Log.Logger = new LoggerConfiguration()
+                .MinimumLevel.Warning() // Set the minimum log level
+                .WriteTo.Console()      // Output logs to the console
+                .CreateLogger();
+
+            Log.Information("Registry initialized with logging configured.");
+
+            // Register image boards here
+            RegisterImageBoards();
+        }
+
+        private void RegisterImageBoards()
+        {
+            // Create and register the FourChanImageBoard
+            RegisterImageBoard(new FourChanImageBoard());
+
+            // Register 8kun
+            RegisterImageBoard(new EightKunImageBoard());
+
+            // ... other image boards
+        }
+
+        // Register a new image board in the registry (by instance)
+        private void RegisterImageBoard(IImageBoard imageBoard)
+        {
+            if (imageBoard == null)
+            {
+                Log.Error("Attempted to register a null image board.");
+                throw new ArgumentNullException(nameof(imageBoard));
+            }
+
+            Type imageBoardType = imageBoard.GetType();
+
+            // Ensure the image board is only registered once
+            if (!_registeredImageBoards.ContainsKey(imageBoardType))
+            {
+                _registeredImageBoards[imageBoardType] = imageBoard;
+                Log.Information("Registered image board: {ImageBoardName}", imageBoardType.Name);
+            }
+            else
+            {
+                Log.Warning("Image board {ImageBoardName} is already registered.", imageBoardType.Name);
+            }
+        }
+
+        // Get a thread instance for a given thread URL and prevent duplicate entries
+        public IThread? GetThread(string url)
+        {
+            if (string.IsNullOrWhiteSpace(url))
+            {
+                Log.Error("URL is null or empty.");
+                throw new ArgumentNullException(nameof(url));
+            }
+
+            if (_processedThreadUrls.Contains(url))
+            {
+                Log.Warning("Thread URL {Url} is already added.", url);
+                return null; // Prevent adding the same thread URL multiple times
+            }
+
+            Uri uri;
+            try
+            {
+                uri = new Uri(url);
+            }
+            catch (UriFormatException ex)
+            {
+                Log.Error(ex, "Invalid URL format: {Url}", url);
+                return null;
+            }
+
+            foreach (IImageBoard imageBoard in _registeredImageBoards.Values)
+            {
+                if (imageBoard.CanHandle(uri) && imageBoard.IsThreadUri(uri))
+                {
+                    Log.Debug("Image board {ImageBoardName} identified URL as thread: {Url}", imageBoard.GetType().Name, url);
+
+                    IThread thread = imageBoard.GetThread(uri);
+                    _processedThreadUrls.Add(url);  // Mark the URL as processed
+
+                    return thread;
+                }
+            }
+
+            Log.Warning("No image board found for thread URL: {Url}", url);
+            return null;
+        }
+
+        // Get a board instance for a given board URL and prevent duplicate entries
+        public IBoard? GetBoard(string url)
+        {
+            if (string.IsNullOrWhiteSpace(url))
+            {
+                Log.Error("URL is null or empty.");
+                throw new ArgumentNullException(nameof(url));
+            }
+
+            if (_processedBoardUrls.Contains(url))
+            {
+                Log.Warning("Board URL {Url} is already added.", url);
+                return null; // Prevent adding the same board URL multiple times
+            }
+
+            Uri uri;
+            try
+            {
+                uri = new Uri(url);
+            }
+            catch (UriFormatException ex)
+            {
+                Log.Error(ex, "Invalid URL format: {Url}", url);
+                return null;
+            }
+
+            foreach (IImageBoard imageBoard in _registeredImageBoards.Values)
+            {
+                if (imageBoard.CanHandle(uri) && imageBoard.IsBoardUri(uri))
+                {
+                    Log.Debug("Image board {ImageBoardName} identified URL as board: {Url}", imageBoard.GetType().Name, url);
+
+                    IBoard board = imageBoard.GetBoard(uri);
+                    _processedBoardUrls.Add(url);  // Mark the URL as processed
+
+                    return board;
+                }
+            }
+
+            Log.Warning("No image board found for board URL: {Url}", url);
+            return null;
+        }
+    }
+}
+---------------------------
+File Path: ./Config.cs
+namespace oChan;
+using System;
+using System.IO;
+using Serilog;
+
+public class Config
+{
+    public string DownloadPath { get; set; }
+
+    // Constructor with a default download path
+    public Config()
+    {
+        Log.Debug("Initializing Config instance.");
+
+        // Initially hardcoded, but later read from config file
+        DownloadPath = GetDefaultPath();
+    }
+
+    private string GetDefaultPath()
+    {
+        try
+        {
+            string path;
+            // Get a default path based on the OS
+            if (OperatingSystem.IsWindows())
+            {
+                path = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+                    "oChanDownloads");
+                Log.Debug("Default download path for Windows: {DownloadPath}", path);
+            }
+            else if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())
+            {
+                path = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                    "oChanDownloads");
+                Log.Debug("Default download path for Unix-based OS: {DownloadPath}", path);
+            }
+            else
+            {
+                Log.Error("Unsupported operating system detected.");
+                throw new PlatformNotSupportedException("Unsupported OS");
+            }
+            return path;
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "An error occurred while getting the default download path.");
+            throw;
+        }
+    }
+
+    // Method to print configuration settings (for testing)
+    public void PrintConfig()
+    {
+        Log.Information("Configuration settings:");
+        Log.Information("Download Path: {DownloadPath}", DownloadPath);
+    }
+
+    // Later, add methods to save/load from a config file
+}
+
+---------------------------

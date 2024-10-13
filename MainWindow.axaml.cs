@@ -1,14 +1,15 @@
-// MainWindow.axaml.cs
-
-using System;
-using System.Threading.Tasks;
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Markup.Xaml;
 using Avalonia.Interactivity;
+using Avalonia.Input;
+using Avalonia.Threading;
 using System.Collections.ObjectModel;
+using System.Linq; // For LINQ methods
 using oChan.Downloader;
 using oChan.Interfaces;
 using Serilog;
-using Avalonia.Threading;
+using System;
 
 namespace oChan
 {
@@ -36,14 +37,13 @@ namespace oChan
             // Initialize shared download queue
             sharedDownloadQueue = new DownloadQueue(5, 1024 * 1024 * 10); // Adjust as needed
 
-            // Set the DataContext for data binding
+            // Set the DataContext to the window itself
             this.DataContext = this;
 
-            // Wire up event handlers
+            // Wire up event handlers for buttons and menu items
             var addUrlButton = this.FindControl<Button>("AddUrlButton");
             addUrlButton.Click += OnAddUrl;
 
-            // Wire up menu item event handlers
             var settingsMenuItem = this.FindControl<MenuItem>("SettingsMenuItem");
             settingsMenuItem.Click += OnSettingsMenuItemClick;
 
@@ -51,48 +51,46 @@ namespace oChan
             aboutMenuItem.Click += OnAboutMenuItemClick;
         }
 
-        // Event handler for Add button
+        // Event handler for the "Add" button
         private async void OnAddUrl(object sender, RoutedEventArgs e)
         {
-            // Get the URL from the input box
             var urlInput = this.FindControl<TextBox>("UrlInput");
             string url = urlInput.Text ?? string.Empty;
 
-            // Check if the URL is not empty
             if (!string.IsNullOrEmpty(url))
             {
                 try
                 {
-                    // First, try to get a thread
                     IThread? thread = _Registry.GetThread(url);
                     if (thread != null)
                     {
-                        // Add the thread to the list for display in the DataGrid
-                        UrlList.Add(thread);
+                        // Add to UrlList on the UI thread
+                        Dispatcher.UIThread.Post(() =>
+                        {
+                            UrlList.Add(thread);
+                        });
 
-                        // Initialize the ArchiveOptions with the shared DownloadQueue
+                        thread.ThreadRemoved += OnThreadRemoved;
+
                         ArchiveOptions options = new ArchiveOptions
                         {
                             DownloadQueue = sharedDownloadQueue
                         };
-
-                        // Start the archive process asynchronously
                         await thread.ArchiveAsync(options);
                     }
                     else
                     {
-                        // If not a thread, try to get a board
                         IBoard? board = _Registry.GetBoard(url);
                         if (board != null)
                         {
-                            // Subscribe to the ThreadDiscovered event
                             board.ThreadDiscovered += OnThreadDiscovered;
-
-                            // Start monitoring the board every 60 seconds
                             board.StartMonitoring(60);
 
-                            // Add the board to the list for display in the DataGrid
-                            BoardsList.Add(board);
+                            // Add to BoardsList on the UI thread
+                            Dispatcher.UIThread.Post(() =>
+                            {
+                                BoardsList.Add(board);
+                            });
                         }
                         else
                         {
@@ -103,45 +101,130 @@ namespace oChan
                 catch (Exception ex)
                 {
                     Log.Error(ex, "An error occurred while handling the URL: {Url}", url);
-                    // Display an error message to the user if necessary
                 }
 
-                // Clear the input box after adding the URL
                 urlInput.Text = string.Empty;
             }
         }
 
-        // Event handler for when a new thread is discovered
-        private void OnThreadDiscovered(object sender, ThreadEventArgs e)
-        {
-            // Ensure that updates to UrlList are made on the UI thread
-            Dispatcher.UIThread.Post(async () =>
-            {
-                // Add the new thread to your threads list
-                UrlList.Add(e.Thread);
-
-                // Start archiving the thread
-                ArchiveOptions options = new ArchiveOptions
-                {
-                    DownloadQueue = sharedDownloadQueue
-                };
-                await e.Thread.ArchiveAsync(options);
-            });
-        }
-
-        // Event handler for Settings menu item
+        // Event handler for the "Settings" menu item
         private void OnSettingsMenuItemClick(object sender, RoutedEventArgs e)
         {
+            // Assuming you have SettingsWindow implemented
             var settingsWindow = new SettingsWindow();
             settingsWindow.ShowDialog(this);
         }
 
-        // Event handler for About menu item
+        // Event handler for the "About" menu item
         private void OnAboutMenuItemClick(object sender, RoutedEventArgs e)
         {
+            // Assuming you have AboutWindow implemented
             var aboutWindow = new AboutWindow();
             aboutWindow.ShowDialog(this);
         }
 
+        // Handle thread removal
+        private void OnThreadRemoved(IThread thread)
+        {
+            Dispatcher.UIThread.Post(() =>
+            {
+                Log.Information("Removing thread {ThreadId} from the UI.", thread.ThreadId);
+                UrlList.Remove(thread);
+            });
+        }
+
+        private void OnThreadDiscovered(object sender, ThreadEventArgs e)
+        {
+            Dispatcher.UIThread.Post(async () =>
+            {
+                var thread = e.Thread;
+                UrlList.Add(thread);
+                thread.ThreadRemoved += OnThreadRemoved;
+
+                ArchiveOptions options = new ArchiveOptions
+                {
+                    DownloadQueue = sharedDownloadQueue
+                };
+                await thread.ArchiveAsync(options);
+            });
+        }
+
+        // Method to remove a thread based on ThreadUrl
+        private void RemoveThread(IThread thread)
+        {
+            if (thread != null)
+            {
+                Log.Information("Manually removing thread with URL: {ThreadUri}", thread.ThreadUri);
+                Dispatcher.UIThread.Post(() =>
+                {
+                    // Search for the thread in UrlList based on ThreadUrl
+                    var threadToRemove = UrlList.FirstOrDefault(t => t.ThreadUri == thread.ThreadUri);
+                    if (threadToRemove != null)
+                    {
+                        UrlList.Remove(threadToRemove);
+                        Log.Information("Thread with URL {ThreadUri} removed successfully.", thread.ThreadUri);
+                    }
+                    else
+                    {
+                        Log.Warning("Thread with URL {ThreadUri} not found in UrlList.", thread.ThreadUri);
+                    }
+                });
+            }
+        }
+
+        // Event handler for the "Remove" MenuItem click
+        private void OnRemoveThreadMenuItemClick(object sender, RoutedEventArgs e)
+        {
+            Log.Error("REMOVECLICK");
+
+            if (sender is MenuItem menuItem)
+            {
+                var dataGrid = this.FindControl<DataGrid>("ThreadsDataGrid");
+                if (dataGrid != null)
+                {
+                    if (dataGrid.SelectedItem is IThread thread)
+                    {
+                        Log.Error($"Right-clicked thread URL: {thread.ThreadUri}");
+                        RemoveThread(thread);
+                    }
+                    else
+                    {
+                        Log.Error("DataGrid SelectedItem is not an IThread instance.");
+                    }
+                }
+                else
+                {
+                    Log.Error("ThreadsDataGrid not found.");
+                }
+            }
+            else
+            {
+                Log.Error("Sender is not a MenuItem.");
+            }
+        }
+
+        // Event handler to select row on right-click
+        private void OnDataGridPointerPressed(object sender, PointerPressedEventArgs e)
+        {
+            if (sender is DataGrid dataGrid)
+            {
+                // Get the current pointer point relative to the DataGrid
+                var pointerPoint = e.GetCurrentPoint(dataGrid);
+
+                // Check if the right mouse button is pressed
+                if (pointerPoint.Properties.IsRightButtonPressed)
+                {
+                    var point = e.GetPosition(dataGrid);
+
+                    // Perform hit testing to determine which element was clicked
+                    var hitTestResult = dataGrid.InputHitTest(point);
+                    if (hitTestResult is DataGridRow row)
+                    {
+                        // Select the row that was right-clicked
+                        dataGrid.SelectedItem = row.DataContext;
+                    }
+                }
+            }
+        }
     }
 }

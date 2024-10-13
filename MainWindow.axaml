@@ -1,20 +1,19 @@
-<!-- MainWindow.axaml -->
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="oChan.MainWindow"
-        x:DataType="vm:MainWindow"
-        xmlns:vm="clr-namespace:oChan"
+        xmlns:local="clr-namespace:oChan"
+        xmlns:interfaces="clr-namespace:oChan.Interfaces"
+        x:DataType="local:MainWindow"
         Width="800" Height="600"
         Title="oChan">
     <DockPanel>
         <!-- Application Menu -->
         <Menu DockPanel.Dock="Top">
-                <MenuItem x:Name="SettingsMenuItem" Header="_Settings" />
-                <MenuItem x:Name="AboutMenuItem" Header="_About" />
+            <MenuItem x:Name="SettingsMenuItem" Header="_Settings" />
+            <MenuItem x:Name="AboutMenuItem" Header="_About" />
         </Menu>
 
         <!-- Main Content -->
-        <!-- Replace StackPanel with Grid -->
         <Grid Margin="10">
             <Grid.RowDefinitions>
                 <!-- Row for URL Input Section -->
@@ -36,16 +35,58 @@
                 <!-- Threads Tab -->
                 <TabItem Header="Threads">
                     <!-- DataGrid for displaying Thread URL, Progress, and Status -->
-                    <DataGrid ItemsSource="{Binding UrlList}"
+                    <DataGrid x:Name="ThreadsDataGrid"
+                              ItemsSource="{Binding UrlList}"
                               AutoGenerateColumns="False"
                               GridLinesVisibility="All"
-                              CanUserSortColumns="True"
-                              HeadersVisibility="All">
+                              IsReadOnly="True"
+                              SelectionMode="Single"
+                              PointerPressed="OnDataGridPointerPressed">
                         <DataGrid.Columns>
-                            <DataGridTextColumn Header="Thread URL" Binding="{Binding ThreadUri}" Width="*" />
-                            <DataGridTextColumn Header="Progress" Binding="{Binding Progress}" Width="150" />
-                            <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="150" />
+                            <!-- Thread ID Column -->
+                            <DataGridTemplateColumn Header="Thread ID">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate x:DataType="interfaces:IThread">
+                                        <TextBlock Text="{Binding ThreadId}" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+
+                            <!-- Title Column -->
+                            <DataGridTemplateColumn Header="Title">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate x:DataType="interfaces:IThread">
+                                        <TextBlock Text="{Binding Title}" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+
+                            <!-- Status Column -->
+                            <DataGridTemplateColumn Header="Status">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate x:DataType="interfaces:IThread">
+                                        <TextBlock Text="{Binding Status}" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+
+                            <!-- Progress Column -->
+                            <DataGridTemplateColumn Header="Progress">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate x:DataType="interfaces:IThread">
+                                        <TextBlock Text="{Binding Progress}" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
                         </DataGrid.Columns>
+
+                        <!-- ContextMenu for right-clicking on a row -->
+                        <DataGrid.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="Remove"
+                                          Click="OnRemoveThreadMenuItemClick" />
+                            </ContextMenu>
+                        </DataGrid.ContextMenu>
                     </DataGrid>
                 </TabItem>
 
@@ -58,7 +99,14 @@
                               CanUserSortColumns="True"
                               HeadersVisibility="All">
                         <DataGrid.Columns>
-                            <DataGridTextColumn Header="Board URL" Binding="{Binding BoardUri}" Width="200" />
+                            <!-- Board URL Column -->
+                            <DataGridTemplateColumn Header="Board URL" Width="200">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate x:DataType="interfaces:IBoard">
+                                        <TextBlock Text="{Binding BoardUri}" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
                         </DataGrid.Columns>
                     </DataGrid>
                 </TabItem>
