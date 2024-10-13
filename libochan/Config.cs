@@ -1,10 +1,11 @@
+using System;
+using System.IO;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using Serilog;
+
 namespace oChan
 {
-    using System;
-    using System.IO;
-    using System.Text.Json;
-    using Serilog;
-
     public class Config
     {
         public string DownloadPath { get; set; }
@@ -62,8 +63,12 @@ namespace oChan
             {
                 try
                 {
+                    var options = new JsonSerializerOptions
+                    {
+                        TypeInfoResolver = ConfigJsonContext.Default
+                    };
                     string json = File.ReadAllText(ConfigFilePath);
-                    return JsonSerializer.Deserialize<Config>(json);
+                    return JsonSerializer.Deserialize<Config>(json, options);
                 }
                 catch (Exception ex)
                 {
@@ -79,7 +84,11 @@ namespace oChan
         {
             try
             {
-                string json = JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true });
+                var options = new JsonSerializerOptions
+                {
+                    TypeInfoResolver = ConfigJsonContext.Default
+                };
+                string json = JsonSerializer.Serialize(this, options);
                 File.WriteAllText(ConfigFilePath, json);
                 Log.Information("Configuration saved to {ConfigFilePath}", ConfigFilePath);
             }
@@ -98,4 +107,9 @@ namespace oChan
             Log.Information("Bandwidth Limiter: {BandwidthLimiter} bytes per second", BandwidthLimiter);
         }
     }
+    [JsonSerializable(typeof(Config))]
+    public partial class ConfigJsonContext : JsonSerializerContext
+    {
+    }
 }
+

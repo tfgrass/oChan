@@ -23,14 +23,84 @@ namespace oChan
             SaveUrlsOnExit = _config.SaveUrlsOnExit;
             MinimizeToTray = _config.MinimizeToTray;
             BandwidthLimiterMB = _config.BandwidthLimiter > 0 ? _config.BandwidthLimiter / (1024.0 * 1024.0) : 5.0; // Default to 5 MB/s
+
+            OnPropertyChanged(nameof(DownloadPath));
+            OnPropertyChanged(nameof(RecheckTimer));
+            OnPropertyChanged(nameof(SaveUrlsOnExit));
+            OnPropertyChanged(nameof(MinimizeToTray));
+            OnPropertyChanged(nameof(BandwidthLimiterMB));
         }
 
         // Properties for data binding
-        public string DownloadPath { get; set; }
-        public int RecheckTimer { get; set; }
-        public bool SaveUrlsOnExit { get; set; }
-        public bool MinimizeToTray { get; set; }
-        public double BandwidthLimiterMB { get; set; } // In MB/s
+        private string _downloadPath;
+        public string DownloadPath
+        {
+            get => _downloadPath;
+            set
+            {
+                if (_downloadPath != value)
+                {
+                    _downloadPath = value;
+                    OnPropertyChanged(nameof(DownloadPath));
+                }
+            }
+        }
+
+        private int _recheckTimer;
+        public int RecheckTimer
+        {
+            get => _recheckTimer;
+            set
+            {
+                if (_recheckTimer != value)
+                {
+                    _recheckTimer = value;
+                    OnPropertyChanged(nameof(RecheckTimer));
+                }
+            }
+        }
+
+        private bool _saveUrlsOnExit;
+        public bool SaveUrlsOnExit
+        {
+            get => _saveUrlsOnExit;
+            set
+            {
+                if (_saveUrlsOnExit != value)
+                {
+                    _saveUrlsOnExit = value;
+                    OnPropertyChanged(nameof(SaveUrlsOnExit));
+                }
+            }
+        }
+
+        private bool _minimizeToTray;
+        public bool MinimizeToTray
+        {
+            get => _minimizeToTray;
+            set
+            {
+                if (_minimizeToTray != value)
+                {
+                    _minimizeToTray = value;
+                    OnPropertyChanged(nameof(MinimizeToTray));
+                }
+            }
+        }
+
+        private double _bandwidthLimiterMB;
+        public double BandwidthLimiterMB
+        {
+            get => _bandwidthLimiterMB;
+            set
+            {
+                if (_bandwidthLimiterMB != value)
+                {
+                    _bandwidthLimiterMB = value;
+                    OnPropertyChanged(nameof(BandwidthLimiterMB));
+                }
+            }
+        }
 
         // Default download path
         private string GetDefaultDownloadPath() => Path.Combine(Directory.GetCurrentDirectory(), "Downloads");
@@ -48,7 +118,6 @@ namespace oChan
                 if (t.Result != null)
                 {
                     DownloadPath = t.Result;
-                    OnPropertyChanged(nameof(DownloadPath));
                 }
             });
         }
