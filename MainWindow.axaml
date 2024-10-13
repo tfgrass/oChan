@@ -8,8 +8,10 @@
     <DockPanel>
         <!-- Application Menu -->
         <Menu DockPanel.Dock="Top">
+            <MenuItem Header="_File">
                 <MenuItem x:Name="SettingsMenuItem" Header="_Settings" />
                 <MenuItem x:Name="AboutMenuItem" Header="_About" />
+            </MenuItem>
         </Menu>
 
         <!-- Main Content -->
@@ -27,7 +29,40 @@
                 <TabItem Header="Threads">
                     <StackPanel Margin="10">
                         <!-- DataGrid for displaying Thread URL, Progress, and Status -->
-                        <!-- ... existing code ... -->
+                        <Grid Margin="0,10,0,0">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="400" />
+                                <ColumnDefinition Width="150" />
+                                <ColumnDefinition Width="150" />
+                            </Grid.ColumnDefinitions>
+
+                            <!-- Header Row -->
+                            <TextBlock Grid.Row="0" Grid.Column="0" Text="Thread URL" FontWeight="Bold" />
+                            <TextBlock Grid.Row="0" Grid.Column="1" Text="Progress" FontWeight="Bold" />
+                            <TextBlock Grid.Row="0" Grid.Column="2" Text="Status" FontWeight="Bold" />
+
+                            <!-- Data Rows -->
+                            <ItemsControl Grid.Row="1" Grid.ColumnSpan="3" ItemsSource="{Binding UrlList}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="400" />
+                                                <ColumnDefinition Width="150" />
+                                                <ColumnDefinition Width="150" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0" Text="{Binding ThreadUri, Mode=OneWay}" />
+                                            <TextBlock Grid.Column="1" Text="{Binding Progress, Mode=OneWay}" />
+                                            <TextBlock Grid.Column="2" Text="{Binding Status, Mode=OneWay}" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </Grid>
                     </StackPanel>
                 </TabItem>
 
@@ -35,7 +70,27 @@
                 <TabItem Header="Boards">
                     <StackPanel Margin="10">
                         <!-- DataGrid for displaying Board URLs -->
-                        <!-- ... existing code ... -->
+                        <Grid Margin="0,10,0,0">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="400" />
+                            </Grid.ColumnDefinitions>
+
+                            <!-- Header Row -->
+                            <TextBlock Grid.Row="0" Grid.Column="0" Text="Board URL" FontWeight="Bold" />
+
+                            <!-- Data Rows -->
+                            <ItemsControl Grid.Row="1" Grid.Column="0" ItemsSource="{Binding BoardsList}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding BoardUri, Mode=OneWay}" />
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </Grid>
                     </StackPanel>
                 </TabItem>
             </TabControl>
