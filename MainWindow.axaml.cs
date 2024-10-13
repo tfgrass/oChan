@@ -1,5 +1,3 @@
-// Updated MainWindow.cs
-
 namespace oChan
 {
     using Avalonia;
@@ -66,7 +64,6 @@ namespace oChan
                     IThread? thread = _Registry.GetThread(url);
                     if (thread != null)
                     {
-                        // Add to UrlList on the UI thread
                         Dispatcher.UIThread.Post(() =>
                         {
                             UrlList.Add(thread);
@@ -88,7 +85,6 @@ namespace oChan
                             board.ThreadDiscovered += OnThreadDiscovered;
                             board.StartMonitoring(60);
 
-                            // Add to BoardsList on the UI thread
                             Dispatcher.UIThread.Post(() =>
                             {
                                 BoardsList.Add(board);
@@ -120,11 +116,20 @@ namespace oChan
                     sharedDownloadQueue.CancelDownloadsForThread(thread); // Cancel all downloads for this thread
                 }
 
-                // Remove the thread from the UI
                 UrlList.Remove(thread);
+                _Registry.RemoveThread(thread.ThreadUri.ToString());
+            });
+        }
 
-                // Notify the Registry that the thread has been removed
-                _Registry.RemoveThread(thread.ThreadUri.ToString()); // Ensure thread URL is removed from the registry
+        // Handle board removal
+        private void OnBoardRemoved(IBoard board)
+        {
+            Dispatcher.UIThread.Post(() =>
+            {
+                Log.Information("Removing board {BoardUri} from the UI.", board.BoardUri);
+                board.StopMonitoring();
+                BoardsList.Remove(board);
+                _Registry.RemoveBoard(board.BoardUri.ToString());
             });
         }
 
@@ -152,16 +157,13 @@ namespace oChan
                 Log.Information("Manually removing thread with URL: {ThreadUri}", thread.ThreadUri);
                 Dispatcher.UIThread.Post(() =>
                 {
-                    // Search for the thread in UrlList based on ThreadUrl
                     var threadToRemove = UrlList.FirstOrDefault(t => t.ThreadUri == thread.ThreadUri);
                     if (threadToRemove != null)
                     {
                         UrlList.Remove(threadToRemove);
-                        threadToRemove.NotifyThreadRemoval(true); // Pass true to indicate manual removal
+                        threadToRemove.NotifyThreadRemoval(true);
 
-                        // Notify the Registry to remove the thread URL from tracking
                         _Registry.RemoveThread(thread.ThreadUri.ToString());
-
                         Log.Information("Thread with URL {ThreadUri} removed successfully.", thread.ThreadUri);
                     }
                     else
@@ -172,26 +174,29 @@ namespace oChan
             }
         }
 
-        // Event handler for the "Remove" MenuItem click
+        // Method to remove a board
+        private void RemoveBoard(IBoard board)
+        {
+            if (board != null)
+            {
+                Log.Information("Manually removing board with URL: {BoardUri}", board.BoardUri);
+                OnBoardRemoved(board);
+            }
+        }
+
+        // Event handler for the "Remove Thread" MenuItem click
         private void OnRemoveThreadMenuItemClick(object sender, RoutedEventArgs e)
         {
             if (sender is MenuItem menuItem)
             {
                 var dataGrid = this.FindControl<DataGrid>("ThreadsDataGrid");
-                if (dataGrid != null)
+                if (dataGrid != null && dataGrid.SelectedItem is IThread thread)
                 {
-                    if (dataGrid.SelectedItem is IThread thread)
-                    {
-                        RemoveThread(thread); // Pass the thread to remove it
-                    }
-                    else
-                    {
-                        Log.Error("DataGrid SelectedItem is not an IThread instance.");
-                    }
+                    RemoveThread(thread);
                 }
                 else
                 {
-                    Log.Error("ThreadsDataGrid not found.");
+                    Log.Error("DataGrid SelectedItem is not an IThread instance.");
                 }
             }
             else
@@ -200,24 +205,57 @@ namespace oChan
             }
         }
 
-        // Event handler to select row on right-click
+        // Event handler for the "Remove Board" MenuItem click
+        private void OnRemoveBoardMenuItemClick(object sender, RoutedEventArgs e)
+        {
+            if (sender is MenuItem menuItem)
+            {
+                var dataGrid = this.FindControl<DataGrid>("BoardsDataGrid");
+                if (dataGrid != null && dataGrid.SelectedItem is IBoard board)
+                {
+                    RemoveBoard(board);
+                }
+                else
+                {
+                    Log.Error("DataGrid SelectedItem is not an IBoard instance.");
+                }
+            }
+            else
+            {
+                Log.Error("Sender is not a MenuItem.");
+            }
+        }
+
+        // Event handler to select thread row on right-click
         private void OnDataGridPointerPressed(object sender, PointerPressedEventArgs e)
         {
             if (sender is DataGrid dataGrid)
             {
-                // Get the current pointer point relative to the DataGrid
                 var pointerPoint = e.GetCurrentPoint(dataGrid);
-
-                // Check if the right mouse button is pressed
                 if (pointerPoint.Properties.IsRightButtonPressed)
                 {
                     var point = e.GetPosition(dataGrid);
-
-                    // Perform hit testing to determine which element was clicked
                     var hitTestResult = dataGrid.InputHitTest(point);
                     if (hitTestResult is DataGridRow row)
                     {
-                        // Select the row that was right-clicked
+                        dataGrid.SelectedItem = row.DataContext;
+                    }
+                }
+            }
+        }
+
+        // Event handler to select board row on right-click
+        private void OnBoardDataGridPointerPressed(object sender, PointerPressedEventArgs e)
+        {
+            if (sender is DataGrid dataGrid)
+            {
+                var pointerPoint = e.GetCurrentPoint(dataGrid);
+                if (pointerPoint.Properties.IsRightButtonPressed)
+                {
+                    var point = e.GetPosition(dataGrid);
+                    var hitTestResult = dataGrid.InputHitTest(point);
+                    if (hitTestResult is DataGridRow row)
+                    {
                         dataGrid.SelectedItem = row.DataContext;
                     }
                 }
@@ -227,7 +265,6 @@ namespace oChan
         // Event handler for the "Settings" menu item
         private void OnSettingsMenuItemClick(object sender, RoutedEventArgs e)
         {
-            // Assuming you have SettingsWindow implemented
             var settingsWindow = new SettingsWindow();
             settingsWindow.ShowDialog(this);
         }
@@ -235,7 +272,6 @@ namespace oChan
         // Event handler for the "About" menu item
         private void OnAboutMenuItemClick(object sender, RoutedEventArgs e)
         {
-            // Assuming you have AboutWindow implemented
             var aboutWindow = new AboutWindow();
             aboutWindow.ShowDialog(this);
         }

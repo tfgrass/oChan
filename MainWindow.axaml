@@ -93,11 +93,14 @@
                 <!-- Boards Tab -->
                 <TabItem Header="Boards">
                     <!-- DataGrid for displaying Board URLs -->
-                    <DataGrid ItemsSource="{Binding BoardsList}"
+                    <DataGrid x:Name="BoardsDataGrid"
+                              ItemsSource="{Binding BoardsList}"
                               AutoGenerateColumns="False"
                               GridLinesVisibility="All"
                               CanUserSortColumns="True"
-                              HeadersVisibility="All">
+                              HeadersVisibility="All"
+                              SelectionMode="Single"
+                              PointerPressed="OnBoardDataGridPointerPressed">
                         <DataGrid.Columns>
                             <!-- Board URL Column -->
                             <DataGridTemplateColumn Header="Board URL" Width="200">
@@ -108,6 +111,14 @@
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>
                         </DataGrid.Columns>
+
+                        <!-- ContextMenu for right-clicking on a board row -->
+                        <DataGrid.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="Remove"
+                                          Click="OnRemoveBoardMenuItemClick" />
+                            </ContextMenu>
+                        </DataGrid.ContextMenu>
                     </DataGrid>
                 </TabItem>
             </TabControl>
