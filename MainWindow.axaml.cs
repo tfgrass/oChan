@@ -1,15 +1,16 @@
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Markup.Xaml;
 using Avalonia.Interactivity;
 using Avalonia.Input;
 using Avalonia.Threading;
 using System.Collections.ObjectModel;
-using System.Linq; // For LINQ methods
+using System.IO;
 using oChan.Downloader;
 using oChan.Interfaces;
 using Serilog;
 using System;
+using System.Linq;
+using Avalonia.Input.Platform;
 
 namespace oChan
 {
@@ -44,93 +45,244 @@ namespace oChan
             var addUrlButton = this.FindControl<Button>("AddUrlButton");
             addUrlButton.Click += OnAddUrl;
 
+            // Wire up the Enter key event handler for the TextBox
+            var urlInput = this.FindControl<TextBox>("UrlInput");
+            urlInput.KeyDown += OnUrlInputKeyDown;
+
             var settingsMenuItem = this.FindControl<MenuItem>("SettingsMenuItem");
             settingsMenuItem.Click += OnSettingsMenuItemClick;
 
             var aboutMenuItem = this.FindControl<MenuItem>("AboutMenuItem");
             aboutMenuItem.Click += OnAboutMenuItemClick;
-        }
 
+            // Handle clipboard paste (CTRL+V or equivalent)
+            this.AddHandler(KeyDownEvent, OnKeyDown, handledEventsToo: true);
+        }
+        // Handle Enter key in the TextBox to trigger AddUrl functionality
+        private void OnUrlInputKeyDown(object? sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Enter)
+            {
+                Log.Information("Enter pressed in the TextBox, triggering Add URL.");
+                var addUrlButton = this.FindControl<Button>("AddUrlButton");
+                addUrlButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            }
+        }
         // Event handler for the "Add" button
         private async void OnAddUrl(object sender, RoutedEventArgs e)
         {
             var urlInput = this.FindControl<TextBox>("UrlInput");
             string url = urlInput.Text ?? string.Empty;
 
-            if (!string.IsNullOrEmpty(url))
+            if (string.IsNullOrEmpty(url))
             {
-                try
-                {
-                    IThread? thread = _Registry.GetThread(url);
-                    if (thread != null)
-                    {
-                        // Add to UrlList on the UI thread
-                        Dispatcher.UIThread.Post(() =>
-                        {
-                            UrlList.Add(thread);
-                        });
-
-                        thread.ThreadRemoved += OnThreadRemoved;
-
-                        ArchiveOptions options = new ArchiveOptions
-                        {
-                            DownloadQueue = sharedDownloadQueue
-                        };
-                        await thread.ArchiveAsync(options);
-                    }
-                    else
-                    {
-                        IBoard? board = _Registry.GetBoard(url);
-                        if (board != null)
-                        {
-                            board.ThreadDiscovered += OnThreadDiscovered;
-                            board.StartMonitoring(60);
-
-                            // Add to BoardsList on the UI thread
-                            Dispatcher.UIThread.Post(() =>
-                            {
-                                BoardsList.Add(board);
-                            });
-                        }
-                        else
-                        {
-                            Log.Warning("No image board could handle the URL: {Url}", url);
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Log.Error(ex, "An error occurred while handling the URL: {Url}", url);
-                }
-
+                await AddUrlsFromClipboard();
+            }
+            else
+            {
+                await AddUrl(url);
                 urlInput.Text = string.Empty;
             }
         }
 
-        // Event handler for the "Settings" menu item
-        private void OnSettingsMenuItemClick(object sender, RoutedEventArgs e)
+        // Method to add a single URL
+        private async System.Threading.Tasks.Task AddUrl(string url)
         {
-            // Assuming you have SettingsWindow implemented
-            var settingsWindow = new SettingsWindow();
-            settingsWindow.ShowDialog(this);
+            try
+            {
+                IThread? thread = _Registry.GetThread(url);
+                if (thread != null)
+                {
+                    Dispatcher.UIThread.Post(() =>
+                    {
+                        UrlList.Add(thread);
+                    });
+
+                    thread.ThreadRemoved += (thread) => OnThreadRemoved(thread, false);
+
+                    ArchiveOptions options = new ArchiveOptions
+                    {
+                        DownloadQueue = sharedDownloadQueue
+                    };
+                    await thread.ArchiveAsync(options);
+                }
+                else
+                {
+                    IBoard? board = _Registry.GetBoard(url);
+                    if (board != null)
+                    {
+                        board.ThreadDiscovered += OnThreadDiscovered;
+                        board.StartMonitoring(60);
+
+                        Dispatcher.UIThread.Post(() =>
+                        {
+                            BoardsList.Add(board);
+                        });
+                    }
+                    else
+                    {
+                        Log.Warning("No image board could handle the URL: {Url}", url);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "An error occurred while handling the URL: {Url}", url);
+            }
         }
 
-        // Event handler for the "About" menu item
-        private void OnAboutMenuItemClick(object sender, RoutedEventArgs e)
+        // Method to discover and add URLs from the clipboard
+        private async System.Threading.Tasks.Task AddUrlsFromClipboard()
         {
-            // Assuming you have AboutWindow implemented
-            var aboutWindow = new AboutWindow();
-            aboutWindow.ShowDialog(this);
+            var clipboard = this.Clipboard; // Access clipboard using the TopLevel instance
+            var clipboardText = await clipboard.GetTextAsync();
+
+            if (!string.IsNullOrWhiteSpace(clipboardText))
+            {
+                var urls = DiscoverUrls(clipboardText);
+                foreach (var url in urls)
+                {
+                    await AddUrl(url);
+                }
+            }
+            else
+            {
+                Log.Information("No URLs found in the clipboard.");
+            }
         }
+
+
+        // Utility method to discover URLs from a given string
+        private string[] DiscoverUrls(string text)
+        {
+            var urls = text.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.RemoveEmptyEntries)
+                           .Where(line => Uri.IsWellFormedUriString(line, UriKind.Absolute))
+                           .ToArray();
+
+            Log.Information("Discovered {Count} URLs from the clipboard.", urls.Length);
+            return urls;
+        }
+
+
+
+        // Handle clipboard paste (CTRL+V)
+        private async void OnKeyDown(object? sender, KeyEventArgs e)
+        {
+            // Get the UrlInput TextBox
+            var urlInput = this.FindControl<TextBox>("UrlInput");
+
+            // Check if CTRL+V is pressed and the TextBox is NOT focused
+            if (e.KeyModifiers == KeyModifiers.Control && e.Key == Key.V && !urlInput.IsFocused)
+            {
+                Log.Information("CTRL+V pressed, attempting to paste URLs from clipboard.");
+
+                // Add URLs from clipboard
+                await AddUrlsFromClipboard();
+                urlInput.Text = string.Empty;
+
+            }
+        }
+
+
 
         // Handle thread removal
-        private void OnThreadRemoved(IThread thread)
+        private void OnThreadRemoved(IThread thread, bool abort)
         {
             Dispatcher.UIThread.Post(() =>
             {
                 Log.Information("Removing thread {ThreadId} from the UI.", thread.ThreadId);
+                if (abort)
+                {
+                    sharedDownloadQueue.CancelDownloadsForThread(thread); // Cancel all downloads for this thread
+                }
+
                 UrlList.Remove(thread);
+                _Registry.RemoveThread(thread.ThreadUri.ToString());
             });
+        }
+
+        // Handle board removal
+        private void OnBoardRemoved(IBoard board)
+        {
+            Dispatcher.UIThread.Post(() =>
+            {
+                Log.Information("Removing board {BoardUri} from the UI.", board.BoardUri);
+                board.StopMonitoring();
+                BoardsList.Remove(board);
+                _Registry.RemoveBoard(board.BoardUri.ToString());
+            });
+        }
+
+        // Handle thread directory opening
+        private void OpenThreadDirectory(IThread thread)
+        {
+            string directoryPath = Path.Combine("Downloads", thread.Board.BoardCode, thread.ThreadId);
+            if (Directory.Exists(directoryPath))
+            {
+                OpenDirectory(directoryPath);
+            }
+            else
+            {
+                Log.Warning("Directory not found for thread {ThreadId}: {DirectoryPath}", thread.ThreadId, directoryPath);
+            }
+        }
+
+        // Handle board directory opening
+        private void OpenBoardDirectory(IBoard board)
+        {
+            string directoryPath = Path.Combine("Downloads", board.BoardCode);
+            if (Directory.Exists(directoryPath))
+            {
+                OpenDirectory(directoryPath);
+            }
+            else
+            {
+                Log.Warning("Directory not found for board {BoardCode}: {DirectoryPath}", board.BoardCode, directoryPath);
+            }
+        }
+
+        // Utility method to open directory
+        private void OpenDirectory(string directoryPath)
+        {
+            try
+            {
+                var psi = new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = directoryPath,
+                    UseShellExecute = true
+                };
+                System.Diagnostics.Process.Start(psi);
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Error opening directory: {DirectoryPath}", directoryPath);
+            }
+        }
+
+        // Event handler for the "Open Directory" context menu click for threads
+        private void OnOpenThreadDirectoryClick(object sender, RoutedEventArgs e)
+        {
+            if (sender is MenuItem menuItem)
+            {
+                var dataGrid = this.FindControl<DataGrid>("ThreadsDataGrid");
+                if (dataGrid != null && dataGrid.SelectedItem is IThread thread)
+                {
+                    OpenThreadDirectory(thread);
+                }
+            }
+        }
+
+        // Event handler for the "Open Directory" context menu click for boards
+        private void OnOpenBoardDirectoryClick(object sender, RoutedEventArgs e)
+        {
+            if (sender is MenuItem menuItem)
+            {
+                var dataGrid = this.FindControl<DataGrid>("BoardsDataGrid");
+                if (dataGrid != null && dataGrid.SelectedItem is IBoard board)
+                {
+                    OpenBoardDirectory(board);
+                }
+            }
         }
 
         private void OnThreadDiscovered(object sender, ThreadEventArgs e)
@@ -139,7 +291,7 @@ namespace oChan
             {
                 var thread = e.Thread;
                 UrlList.Add(thread);
-                thread.ThreadRemoved += OnThreadRemoved;
+                thread.ThreadRemoved += (thread) => OnThreadRemoved(thread, false);
 
                 ArchiveOptions options = new ArchiveOptions
                 {
@@ -157,11 +309,13 @@ namespace oChan
                 Log.Information("Manually removing thread with URL: {ThreadUri}", thread.ThreadUri);
                 Dispatcher.UIThread.Post(() =>
                 {
-                    // Search for the thread in UrlList based on ThreadUrl
                     var threadToRemove = UrlList.FirstOrDefault(t => t.ThreadUri == thread.ThreadUri);
                     if (threadToRemove != null)
                     {
                         UrlList.Remove(threadToRemove);
+                        threadToRemove.NotifyThreadRemoval(true);
+
+                        _Registry.RemoveThread(thread.ThreadUri.ToString());
                         Log.Information("Thread with URL {ThreadUri} removed successfully.", thread.ThreadUri);
                     }
                     else
@@ -172,29 +326,29 @@ namespace oChan
             }
         }
 
-        // Event handler for the "Remove" MenuItem click
+        // Method to remove a board
+        private void RemoveBoard(IBoard board)
+        {
+            if (board != null)
+            {
+                Log.Information("Manually removing board with URL: {BoardUri}", board.BoardUri);
+                OnBoardRemoved(board);
+            }
+        }
+
+        // Event handler for the "Remove Thread" MenuItem click
         private void OnRemoveThreadMenuItemClick(object sender, RoutedEventArgs e)
         {
-            Log.Error("REMOVECLICK");
-
             if (sender is MenuItem menuItem)
             {
                 var dataGrid = this.FindControl<DataGrid>("ThreadsDataGrid");
-                if (dataGrid != null)
+                if (dataGrid != null && dataGrid.SelectedItem is IThread thread)
                 {
-                    if (dataGrid.SelectedItem is IThread thread)
-                    {
-                        Log.Error($"Right-clicked thread URL: {thread.ThreadUri}");
-                        RemoveThread(thread);
-                    }
-                    else
-                    {
-                        Log.Error("DataGrid SelectedItem is not an IThread instance.");
-                    }
+                    RemoveThread(thread);
                 }
                 else
                 {
-                    Log.Error("ThreadsDataGrid not found.");
+                    Log.Error("DataGrid SelectedItem is not an IThread instance.");
                 }
             }
             else
@@ -203,27 +357,102 @@ namespace oChan
             }
         }
 
-        // Event handler to select row on right-click
+        // Event handler for the "Remove Board" MenuItem click
+        private void OnRemoveBoardMenuItemClick(object sender, RoutedEventArgs e)
+        {
+            if (sender is MenuItem menuItem)
+            {
+                var dataGrid = this.FindControl<DataGrid>("BoardsDataGrid");
+                if (dataGrid != null && dataGrid.SelectedItem is IBoard board)
+                {
+                    RemoveBoard(board);
+                }
+                else
+                {
+                    Log.Error("DataGrid SelectedItem is not an IBoard instance.");
+                }
+            }
+            else
+            {
+                Log.Error("Sender is not a MenuItem.");
+            }
+        }
+
+        // Event handler to select thread row on right-click
         private void OnDataGridPointerPressed(object sender, PointerPressedEventArgs e)
         {
             if (sender is DataGrid dataGrid)
             {
-                // Get the current pointer point relative to the DataGrid
                 var pointerPoint = e.GetCurrentPoint(dataGrid);
-
-                // Check if the right mouse button is pressed
                 if (pointerPoint.Properties.IsRightButtonPressed)
                 {
                     var point = e.GetPosition(dataGrid);
-
-                    // Perform hit testing to determine which element was clicked
                     var hitTestResult = dataGrid.InputHitTest(point);
                     if (hitTestResult is DataGridRow row)
                     {
-                        // Select the row that was right-clicked
                         dataGrid.SelectedItem = row.DataContext;
                     }
                 }
+            }
+        }
+
+        // Event handler to select board row on right-click
+        private void OnBoardDataGridPointerPressed(object sender, PointerPressedEventArgs e)
+        {
+            if (sender is DataGrid dataGrid)
+            {
+                var pointerPoint = e.GetCurrentPoint(dataGrid);
+                if (pointerPoint.Properties.IsRightButtonPressed)
+                {
+                    var point = e.GetPosition(dataGrid);
+                    var hitTestResult = dataGrid.InputHitTest(point);
+                    if (hitTestResult is DataGridRow row)
+                    {
+                        dataGrid.SelectedItem = row.DataContext;
+                    }
+                }
+            }
+        }
+
+        private void OnSettingsMenuItemClick(object sender, RoutedEventArgs e)
+        {
+            var settingsWindow = new SettingsWindow(_Registry.GetConfig());
+            settingsWindow.ShowDialog(this);
+        }
+
+        private void OnAboutMenuItemClick(object sender, RoutedEventArgs e)
+        {
+            var aboutWindow = new AboutWindow();
+            aboutWindow.ShowDialog(this);
+        }
+
+        private void OnThreadPointerPressed(object? sender, PointerPressedEventArgs e)
+        {
+            // Add logic for pointer pressed
+        }
+
+        private void OnThreadDoubleTapped(object? sender, TappedEventArgs e)
+        {
+            Log.Debug("Double tapped on a thread.");
+            var dataGrid = this.FindControl<DataGrid>("ThreadsDataGrid");
+            if (dataGrid != null && dataGrid.SelectedItem is IThread thread)
+            {
+                OpenThreadDirectory(thread);
+            }
+        }
+
+        private void OnBoardPointerPressed(object? sender, PointerPressedEventArgs e)
+        {
+            // Add logic for pointer pressed on board
+        }
+
+        private void OnBoardDoubleTapped(object? sender, TappedEventArgs e)
+        {
+            Log.Debug("Double tapped on a thread.");
+            var dataGrid = this.FindControl<DataGrid>("BoardsDataGrid");
+            if (dataGrid != null && dataGrid.SelectedItem is IBoard board)
+            {
+                OpenBoardDirectory(board);
             }
         }
     }

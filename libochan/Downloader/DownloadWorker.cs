@@ -37,6 +37,15 @@ public class DownloadWorker
     {
         try
         {
+            // Check if the file already exists in the destination path
+            if (File.Exists(_downloadItem.DestinationPath))
+            {
+                Log.Information("File {DestinationPath} already exists, skipping download.", _downloadItem.DestinationPath);
+                _downloadItem.Thread.MarkMediaAsDownloaded(_downloadItem.MediaIdentifier);
+                return;
+            }
+
+            // Check if the media was already marked as downloaded
             if (_downloadItem.Thread.IsMediaDownloaded(_downloadItem.MediaIdentifier))
             {
                 Log.Information("Media {MediaIdentifier} already downloaded for thread {ThreadId}, skipping download.",
@@ -53,8 +62,16 @@ public class DownloadWorker
             // Handle 404 status code
             if (response.StatusCode == HttpStatusCode.NotFound)
             {
-                Log.Warning("Thread {ThreadId} returned 404, notifying removal.", _downloadItem.Thread.ThreadId);
-                _downloadItem.Thread.NotifyThreadRemoval(); // Notify that the thread should be removed
+                Log.Warning("Thread {ThreadId} returned 404 (not found), notifying removal.", _downloadItem.Thread.ThreadId);
+                _downloadItem.Thread.NotifyThreadRemoval(false); // Thread removal due to 404, not manual
+                return;
+            }
+
+            // Handle cancellation (check if manual)
+            if (cancellationToken.IsCancellationRequested)
+            {
+                Log.Information("Download for {DownloadUri} was cancelled.", _downloadItem.DownloadUri);
+                _downloadItem.Thread.NotifyThreadRemoval(true); // Manual removal
                 return;
             }
 
@@ -68,8 +85,7 @@ public class DownloadWorker
             }
 
             using Stream contentStream = await response.Content.ReadAsStreamAsync(cancellationToken);
-            
-            // Handle file access exception and exit gracefully
+
             try
             {
                 using FileStream fileStream = new FileStream(_downloadItem?.DestinationPath ?? throw new ArgumentNullException(nameof(_downloadItem.DestinationPath)),
@@ -87,7 +103,6 @@ public class DownloadWorker
             catch (IOException ioEx)
             {
                 Log.Warning("File access issue occurred for {FilePath}, exiting downloader.", _downloadItem.DestinationPath);
-
                 Log.Verbose(ioEx, "File access issue occurred for {FilePath}, exiting downloader.", _downloadItem.DestinationPath);
                 return; // Exit the downloader gracefully
             }

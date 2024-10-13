@@ -9,6 +9,7 @@ public class Rechecker
 {
     private readonly Timer _recheckTimer;
     private readonly List<IThread> _threadsToMonitor;
+    private readonly object _lockObject = new object();
 
     public Rechecker(List<IThread> threads, int intervalInSeconds)
     {
@@ -26,9 +27,25 @@ public class Rechecker
     // Event triggered on timer interval
     private async void OnRecheckEvent(Object source, ElapsedEventArgs e)
     {
+        lock (_lockObject)
+        {
+            if (_threadsToMonitor.Count == 0)
+            {
+                Log.Information("No threads to recheck. Skipping this interval.");
+                return;
+            }
+        }
+
         Log.Information("Rechecking threads...");
 
-        foreach (IThread thread in _threadsToMonitor)
+        List<IThread> threadsCopy;
+
+        lock (_lockObject)
+        {
+            threadsCopy = new List<IThread>(_threadsToMonitor); // Make a copy of the thread list to avoid locking during async calls
+        }
+
+        foreach (IThread thread in threadsCopy)
         {
             try
             {
@@ -48,5 +65,18 @@ public class Rechecker
     {
         _recheckTimer.Stop();
         Log.Information("Rechecker stopped.");
+    }
+
+    // Remove a specific thread from the monitoring list
+    public void RemoveThreadFromRechecking(IThread thread)
+    {
+        lock (_lockObject)
+        {
+            if (_threadsToMonitor.Contains(thread))
+            {
+                _threadsToMonitor.Remove(thread);
+                Log.Information("Removed thread {ThreadId} from rechecking.", thread.ThreadId);
+            }
+        }
     }
 }

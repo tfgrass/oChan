@@ -1,62 +1,115 @@
-namespace oChan;
 using System;
 using System.IO;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Serilog;
 
-public class Config
+namespace oChan
 {
-    public string DownloadPath { get; set; }
-
-    // Constructor with a default download path
-    public Config()
+    public class Config
     {
-        Log.Debug("Initializing Config instance.");
+        public string DownloadPath { get; set; }
+        public int RecheckTimer { get; set; } // Timer in seconds
+        public bool SaveUrlsOnExit { get; set; }
+        public bool MinimizeToTray { get; set; }
+        public long BandwidthLimiter { get; set; } // Bytes per second (convert later)
 
-        // Initially hardcoded, but later read from config file
-        DownloadPath = GetDefaultPath();
-    }
+        private static readonly string ConfigFilePath = Path.Combine(GetConfigDirectory(), "settings.json");
 
-    private string GetDefaultPath()
-    {
-        try
+        public Config()
         {
-            string path;
-            // Get a default path based on the OS
+            // Set default values
+            DownloadPath = GetDefaultDownloadPath();
+            RecheckTimer = 60; // Default to 1 minute
+            SaveUrlsOnExit = true;
+            MinimizeToTray = false;
+            BandwidthLimiter = 1024 * 1024; // Default to 1 MB/s
+        }
+
+        public static string GetConfigDirectory()
+        {
+            string homePath;
             if (OperatingSystem.IsWindows())
             {
-                path = Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-                    "oChanDownloads");
-                Log.Debug("Default download path for Windows: {DownloadPath}", path);
+                homePath = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
             }
             else if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())
             {
-                path = Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-                    "oChanDownloads");
-                Log.Debug("Default download path for Unix-based OS: {DownloadPath}", path);
+                homePath = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
             }
             else
             {
-                Log.Error("Unsupported operating system detected.");
                 throw new PlatformNotSupportedException("Unsupported OS");
             }
-            return path;
+
+            string configDir = Path.Combine(homePath, ".oChan");
+            if (!Directory.Exists(configDir))
+            {
+                Directory.CreateDirectory(configDir);
+            }
+
+            return configDir;
         }
-        catch (Exception ex)
+
+        private string GetDefaultDownloadPath()
         {
-            Log.Error(ex, "An error occurred while getting the default download path.");
-            throw;
+            // Provide OS-specific download paths
+            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "oChanDownloads");
+        }
+
+        public static Config LoadConfig()
+        {
+            if (File.Exists(ConfigFilePath))
+            {
+                try
+                {
+                    var options = new JsonSerializerOptions
+                    {
+                        TypeInfoResolver = ConfigJsonContext.Default
+                    };
+                    string json = File.ReadAllText(ConfigFilePath);
+                    return JsonSerializer.Deserialize<Config>(json, options);
+                }
+                catch (Exception ex)
+                {
+                    Log.Error(ex, "Failed to load configuration file.");
+                    throw;
+                }
+            }
+
+            return new Config(); // Return default config if none exists
+        }
+
+        public void SaveConfig()
+        {
+            try
+            {
+                var options = new JsonSerializerOptions
+                {
+                    TypeInfoResolver = ConfigJsonContext.Default
+                };
+                string json = JsonSerializer.Serialize(this, options);
+                File.WriteAllText(ConfigFilePath, json);
+                Log.Information("Configuration saved to {ConfigFilePath}", ConfigFilePath);
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Failed to save configuration.");
+            }
+        }
+
+        public void PrintConfig()
+        {
+            Log.Information("Download Path: {DownloadPath}", DownloadPath);
+            Log.Information("Recheck Timer: {RecheckTimer} seconds", RecheckTimer);
+            Log.Information("Save URLs on Exit: {SaveUrlsOnExit}", SaveUrlsOnExit);
+            Log.Information("Minimize to Tray: {MinimizeToTray}", MinimizeToTray);
+            Log.Information("Bandwidth Limiter: {BandwidthLimiter} bytes per second", BandwidthLimiter);
         }
     }
-
-    // Method to print configuration settings (for testing)
-    public void PrintConfig()
+    [JsonSerializable(typeof(Config))]
+    public partial class ConfigJsonContext : JsonSerializerContext
     {
-        Log.Information("Configuration settings:");
-        Log.Information("Download Path: {DownloadPath}", DownloadPath);
     }
-
-    // Later, add methods to save/load from a config file
 }
 

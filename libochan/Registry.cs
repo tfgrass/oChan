@@ -9,23 +9,35 @@ namespace oChan
 
     public class Registry
     {
-        // Store singleton instances of image boards in a dictionary
+        private readonly Config _config;  // Config object to store app settings
         private readonly Dictionary<Type, IImageBoard> _registeredImageBoards = new();
         private readonly HashSet<string> _processedThreadUrls = new();  // Keep track of added thread URLs
         private readonly HashSet<string> _processedBoardUrls = new();   // Keep track of added board URLs
+        private readonly Dictionary<string, IThread> _activeThreads = new(); // Track active threads by URL
 
         public Registry()
         {
+            // Set up logging configuration
             Log.Logger = new LoggerConfiguration()
-                .MinimumLevel.Debug() // Set the minimum log level
+                .MinimumLevel.Debug()   // Set the minimum log level
                 .WriteTo.Console()      // Output logs to the console
                 .CreateLogger();
 
             Log.Information("Registry initialized with logging configured.");
 
+            // Initialize the Config object by loading from file or creating default
+            _config = Config.LoadConfig();
+            Log.Information("Configuration loaded.");
+
+            // Print out loaded config (for debug purposes)
+            _config.PrintConfig();
+
             // Register image boards here
             RegisterImageBoards();
         }
+
+        // Method to expose the Config object so it can be used elsewhere
+        public Config GetConfig() => _config;
 
         private void RegisterImageBoards()
         {
@@ -35,10 +47,10 @@ namespace oChan
             // Register 8kun
             RegisterImageBoard(new EightKunImageBoard());
 
-            // ... other image boards
+            // Register other image boards here if needed
         }
 
-        // Register a new image board in the registry (by instance)
+        // Register a new image board in the registry
         private void RegisterImageBoard(IImageBoard imageBoard)
         {
             if (imageBoard == null)
@@ -95,6 +107,7 @@ namespace oChan
 
                     IThread thread = imageBoard.GetThread(uri);
                     _processedThreadUrls.Add(url);  // Mark the URL as processed
+                    _activeThreads[url] = thread;   // Store the active thread
 
                     return thread;
                 }
@@ -102,6 +115,26 @@ namespace oChan
 
             Log.Warning("No image board found for thread URL: {Url}", url);
             return null;
+        }
+
+        // Remove a thread URL from the processed list and active threads
+        public void RemoveThread(string url)
+        {
+            if (_processedThreadUrls.Contains(url))
+            {
+                _processedThreadUrls.Remove(url);
+            }
+            else
+            {
+                Log.Warning("Attempted to remove thread URL {Url} that was not processed.", url);
+            }
+
+            // Ensure the thread is also removed from active threads
+            if (_activeThreads.ContainsKey(url))
+            {
+                _activeThreads.Remove(url);
+                Log.Information("Removed thread {Url} from active threads.", url);
+            }
         }
 
         // Get a board instance for a given board URL and prevent duplicate entries
@@ -145,6 +178,20 @@ namespace oChan
 
             Log.Warning("No image board found for board URL: {Url}", url);
             return null;
+        }
+
+        // Remove a board URL from the processed list
+        public void RemoveBoard(string url)
+        {
+            if (_processedBoardUrls.Contains(url))
+            {
+                _processedBoardUrls.Remove(url);
+                Log.Information("Removed board URL {Url} from processed list.", url);
+            }
+            else
+            {
+                Log.Warning("Attempted to remove board URL {Url} that was not processed.", url);
+            }
         }
     }
 }

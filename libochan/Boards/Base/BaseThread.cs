@@ -246,9 +246,16 @@ public abstract class BaseThread : IThread, INotifyPropertyChanged
         }
     }
 
-    public void NotifyThreadRemoval()
+    public void NotifyThreadRemoval(bool abort)
     {
-        Log.Information("Notifying that thread {ThreadId} should be removed", ThreadId);
+        Log.Information("Notifying that thread {ThreadId} should be removed, Abort: {Abort}", ThreadId, abort);
         ThreadRemoved?.Invoke(this); // Notify whoever is subscribed to this event (UI or Registry)
+
+        // If 'abort' is true, stop rechecking and cancel any ongoing downloads
+        if (abort)
+        {
+            StopRechecking(); // Stop the rechecker to prevent further checks
+            Log.Information("Aborting downloads and rechecking for thread {ThreadId}", ThreadId);
+        }
     }
 }

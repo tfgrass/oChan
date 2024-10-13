@@ -102,9 +102,12 @@ namespace oChan.Interfaces
         /// <returns>A task representing the asynchronous operation.</returns>
         Task SaveDownloadedMediaAsync();
 
+
         /// <summary>
-        /// Notifies that the thread should be removed (e.g., when a 404 occurs).
+        /// Notifies that the thread should be removed (e.g., when a 404 occurs or manually).
         /// </summary>
-        void NotifyThreadRemoval();
+        /// <param name="abort">Indicates whether downloads should be aborted (true if manual removal).</param>
+        void NotifyThreadRemoval(bool abort);
+    
     }
 }
