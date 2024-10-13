@@ -10,7 +10,8 @@ using oChan.Interfaces;
 using Serilog;
 using System;
 using System.Linq;
-using oChan;
+using Avalonia.Input.Platform;
+
 namespace oChan
 {
     public partial class MainWindow : Window
@@ -44,66 +45,145 @@ namespace oChan
             var addUrlButton = this.FindControl<Button>("AddUrlButton");
             addUrlButton.Click += OnAddUrl;
 
+            // Wire up the Enter key event handler for the TextBox
+            var urlInput = this.FindControl<TextBox>("UrlInput");
+            urlInput.KeyDown += OnUrlInputKeyDown;
+
             var settingsMenuItem = this.FindControl<MenuItem>("SettingsMenuItem");
             settingsMenuItem.Click += OnSettingsMenuItemClick;
 
             var aboutMenuItem = this.FindControl<MenuItem>("AboutMenuItem");
             aboutMenuItem.Click += OnAboutMenuItemClick;
-        }
 
+            // Handle clipboard paste (CTRL+V or equivalent)
+            this.AddHandler(KeyDownEvent, OnKeyDown, handledEventsToo: true);
+        }
+        // Handle Enter key in the TextBox to trigger AddUrl functionality
+        private void OnUrlInputKeyDown(object? sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Enter)
+            {
+                Log.Information("Enter pressed in the TextBox, triggering Add URL.");
+                var addUrlButton = this.FindControl<Button>("AddUrlButton");
+                addUrlButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            }
+        }
         // Event handler for the "Add" button
         private async void OnAddUrl(object sender, RoutedEventArgs e)
         {
             var urlInput = this.FindControl<TextBox>("UrlInput");
             string url = urlInput.Text ?? string.Empty;
 
-            if (!string.IsNullOrEmpty(url))
+            if (string.IsNullOrEmpty(url))
             {
-                try
-                {
-                    IThread? thread = _Registry.GetThread(url);
-                    if (thread != null)
-                    {
-                        Dispatcher.UIThread.Post(() =>
-                        {
-                            UrlList.Add(thread);
-                        });
-
-                        thread.ThreadRemoved += (thread) => OnThreadRemoved(thread, false);
-
-                        ArchiveOptions options = new ArchiveOptions
-                        {
-                            DownloadQueue = sharedDownloadQueue
-                        };
-                        await thread.ArchiveAsync(options);
-                    }
-                    else
-                    {
-                        IBoard? board = _Registry.GetBoard(url);
-                        if (board != null)
-                        {
-                            board.ThreadDiscovered += OnThreadDiscovered;
-                            board.StartMonitoring(60);
-
-                            Dispatcher.UIThread.Post(() =>
-                            {
-                                BoardsList.Add(board);
-                            });
-                        }
-                        else
-                        {
-                            Log.Warning("No image board could handle the URL: {Url}", url);
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Log.Error(ex, "An error occurred while handling the URL: {Url}", url);
-                }
-
+                await AddUrlsFromClipboard();
+            }
+            else
+            {
+                await AddUrl(url);
                 urlInput.Text = string.Empty;
             }
         }
+
+        // Method to add a single URL
+        private async System.Threading.Tasks.Task AddUrl(string url)
+        {
+            try
+            {
+                IThread? thread = _Registry.GetThread(url);
+                if (thread != null)
+                {
+                    Dispatcher.UIThread.Post(() =>
+                    {
+                        UrlList.Add(thread);
+                    });
+
+                    thread.ThreadRemoved += (thread) => OnThreadRemoved(thread, false);
+
+                    ArchiveOptions options = new ArchiveOptions
+                    {
+                        DownloadQueue = sharedDownloadQueue
+                    };
+                    await thread.ArchiveAsync(options);
+                }
+                else
+                {
+                    IBoard? board = _Registry.GetBoard(url);
+                    if (board != null)
+                    {
+                        board.ThreadDiscovered += OnThreadDiscovered;
+                        board.StartMonitoring(60);
+
+                        Dispatcher.UIThread.Post(() =>
+                        {
+                            BoardsList.Add(board);
+                        });
+                    }
+                    else
+                    {
+                        Log.Warning("No image board could handle the URL: {Url}", url);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "An error occurred while handling the URL: {Url}", url);
+            }
+        }
+
+        // Method to discover and add URLs from the clipboard
+        private async System.Threading.Tasks.Task AddUrlsFromClipboard()
+        {
+            var clipboard = this.Clipboard; // Access clipboard using the TopLevel instance
+            var clipboardText = await clipboard.GetTextAsync();
+
+            if (!string.IsNullOrWhiteSpace(clipboardText))
+            {
+                var urls = DiscoverUrls(clipboardText);
+                foreach (var url in urls)
+                {
+                    await AddUrl(url);
+                }
+            }
+            else
+            {
+                Log.Information("No URLs found in the clipboard.");
+            }
+        }
+
+
+        // Utility method to discover URLs from a given string
+        private string[] DiscoverUrls(string text)
+        {
+            var urls = text.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.RemoveEmptyEntries)
+                           .Where(line => Uri.IsWellFormedUriString(line, UriKind.Absolute))
+                           .ToArray();
+
+            Log.Information("Discovered {Count} URLs from the clipboard.", urls.Length);
+            return urls;
+        }
+
+
+
+        // Handle clipboard paste (CTRL+V)
+        private async void OnKeyDown(object? sender, KeyEventArgs e)
+        {
+            // Get the UrlInput TextBox
+            var urlInput = this.FindControl<TextBox>("UrlInput");
+
+            // Check if CTRL+V is pressed and the TextBox is NOT focused
+            if (e.KeyModifiers == KeyModifiers.Control && e.Key == Key.V && !urlInput.IsFocused)
+            {
+                Log.Information("CTRL+V pressed, attempting to paste URLs from clipboard.");
+
+                // Add URLs from clipboard
+                await AddUrlsFromClipboard();
+                urlInput.Text = string.Empty;
+
+            }
+        }
+
+
 
         // Handle thread removal
         private void OnThreadRemoved(IThread thread, bool abort)
@@ -221,7 +301,6 @@ namespace oChan
             });
         }
 
-
         // Method to remove a thread based on ThreadUrl
         private void RemoveThread(IThread thread)
         {
@@ -335,10 +414,9 @@ namespace oChan
             }
         }
 
-
         private void OnSettingsMenuItemClick(object sender, RoutedEventArgs e)
         {
-        var settingsWindow = new SettingsWindow(_Registry.GetConfig());
+            var settingsWindow = new SettingsWindow(_Registry.GetConfig());
             settingsWindow.ShowDialog(this);
         }
 
@@ -348,37 +426,34 @@ namespace oChan
             aboutWindow.ShowDialog(this);
         }
 
-        // Event handler for pointer pressed on a thread
         private void OnThreadPointerPressed(object? sender, PointerPressedEventArgs e)
         {
             // Add logic for pointer pressed
         }
 
-        // Event handler for double tapped on a thread
         private void OnThreadDoubleTapped(object? sender, TappedEventArgs e)
         {
             Log.Debug("Double tapped on a thread.");
-                var dataGrid = this.FindControl<DataGrid>("ThreadsDataGrid");
-                if (dataGrid != null && dataGrid.SelectedItem is IThread thread)
-                {
-                    OpenThreadDirectory(thread);
-                }
+            var dataGrid = this.FindControl<DataGrid>("ThreadsDataGrid");
+            if (dataGrid != null && dataGrid.SelectedItem is IThread thread)
+            {
+                OpenThreadDirectory(thread);
+            }
         }
 
-        // Event handler for pointer pressed on a board
         private void OnBoardPointerPressed(object? sender, PointerPressedEventArgs e)
         {
             // Add logic for pointer pressed on board
         }
 
-        // Event handler for double tapped on a board
         private void OnBoardDoubleTapped(object? sender, TappedEventArgs e)
         {
             Log.Debug("Double tapped on a thread.");
-                var dataGrid = this.FindControl<DataGrid>("BoardsDataGrid");
-                if (dataGrid != null && dataGrid.SelectedItem is IBoard board)
-                {
-                    OpenBoardDirectory(board);
-                }        }
+            var dataGrid = this.FindControl<DataGrid>("BoardsDataGrid");
+            if (dataGrid != null && dataGrid.SelectedItem is IBoard board)
+            {
+                OpenBoardDirectory(board);
+            }
+        }
     }
 }
