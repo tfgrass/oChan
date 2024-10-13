@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using oChan.Downloader;
 using oChan.Interfaces;
 using Serilog;
+using Avalonia.Threading; // Make sure to include this namespace
 
 public abstract class BaseThread : IThread, INotifyPropertyChanged
 {
@@ -22,7 +23,7 @@ public abstract class BaseThread : IThread, INotifyPropertyChanged
     public abstract IBoard Board { get; }
     public abstract string ThreadId { get; }
 
-    private string _title;
+    private string _title = "Unknown";
     public virtual string Title
     {
         get => _title;
@@ -39,7 +40,7 @@ public abstract class BaseThread : IThread, INotifyPropertyChanged
     public abstract string NiceName { get; }
     public abstract Uri ThreadUri { get; }
 
-    private string _status;
+    private string _status = "Pending";
     public string Status
     {
         get => _status;
@@ -150,7 +151,7 @@ public abstract class BaseThread : IThread, INotifyPropertyChanged
             try
             {
                 string jsonContent = await File.ReadAllTextAsync(filePath);
-                HashSet<string> downloadedMedia = JsonSerializer.Deserialize<HashSet<string>>(jsonContent);
+                HashSet<string>? downloadedMedia = JsonSerializer.Deserialize<HashSet<string>>(jsonContent);
                 if (downloadedMedia != null)
                 {
                     DownloadedMedia = downloadedMedia;
@@ -232,7 +233,17 @@ public abstract class BaseThread : IThread, INotifyPropertyChanged
 
     protected void OnPropertyChanged([CallerMemberName] string? propertyName = null)
     {
-        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        if (Dispatcher.UIThread.CheckAccess())
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        }
+        else
+        {
+            Dispatcher.UIThread.Post(() =>
+            {
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+            });
+        }
     }
 
     public void NotifyThreadRemoval()
