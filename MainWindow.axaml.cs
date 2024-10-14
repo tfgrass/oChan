@@ -14,6 +14,7 @@ using Avalonia.Input.Platform;
 using Avalonia.Controls.Notifications;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Platform;
+using Avalonia.Media.Imaging;
 
 namespace oChan
 {
@@ -72,6 +73,7 @@ namespace oChan
             // Initialize the tray icon
             SetupTrayIcon();
         }
+
         // Method to open the download folder
         private void OpenDownloadFolder()
         {
@@ -99,14 +101,12 @@ namespace oChan
             }
         }
 
-
-
         // Method to set up the tray icon
         private void SetupTrayIcon()
         {
             var trayIcon = new TrayIcon
             {
-                Icon = new WindowIcon("Assets/ochan.png"),
+                Icon = new WindowIcon(AssetLoader.Open(new Uri("avares://oChan/Assets/ochan.png"))),
                 ToolTipText = "oChan - Image Downloader"
             };
 
@@ -115,25 +115,25 @@ namespace oChan
 
             // Create "Open" menu item with icon
             var openMenuItem = new NativeMenuItem { Header = "Open" };
-            openMenuItem.Icon = new Avalonia.Media.Imaging.Bitmap("Assets/icons/list.png");
+            openMenuItem.Icon = new Bitmap(AssetLoader.Open(new Uri("avares://oChan/Assets/icons/list.png")));
             openMenuItem.Click += (s, e) => Show();
             menu.Items.Add(openMenuItem);
 
             // Create "Open Download Folder" menu item with icon
             var openDownloadFolderMenuItem = new NativeMenuItem { Header = "Open Download Folder" };
-            openDownloadFolderMenuItem.Icon = new Avalonia.Media.Imaging.Bitmap("Assets/icons/folder.png");
+            openDownloadFolderMenuItem.Icon = new Bitmap(AssetLoader.Open(new Uri("avares://oChan/Assets/icons/folder.png")));
             openDownloadFolderMenuItem.Click += (s, e) => OpenDownloadFolder();
             menu.Items.Add(openDownloadFolderMenuItem);
 
             // Create "Add URLs from Clipboard" menu item with icon
             var addUrlsFromClipboardMenuItem = new NativeMenuItem { Header = "Add URLs from Clipboard" };
-            addUrlsFromClipboardMenuItem.Icon = new Avalonia.Media.Imaging.Bitmap("Assets/icons/clipboard.png");
+            addUrlsFromClipboardMenuItem.Icon = new Bitmap(AssetLoader.Open(new Uri("avares://oChan/Assets/icons/clipboard.png")));
             addUrlsFromClipboardMenuItem.Click += async (s, e) => await AddUrlsFromClipboard();
             menu.Items.Add(addUrlsFromClipboardMenuItem);
 
             // Create "Exit" menu item with icon
             var exitMenuItem = new NativeMenuItem { Header = "Exit" };
-            exitMenuItem.Icon = new Avalonia.Media.Imaging.Bitmap("Assets/icons/power.png");
+            exitMenuItem.Icon = new Bitmap(AssetLoader.Open(new Uri("avares://oChan/Assets/icons/power.png")));
             exitMenuItem.Click += (s, e) => CloseApplication();
             menu.Items.Add(exitMenuItem);
 
@@ -154,9 +154,6 @@ namespace oChan
             trayIcon.IsVisible = true;
         }
 
-
-
-
         // Handle closing the application gracefully
         private void CloseApplication()
         {
@@ -169,7 +166,6 @@ namespace oChan
                 Environment.Exit(0);  // Exit the application entirely
             });
         }
-
 
         // Handle window closing (minimize to tray)
         protected override void OnClosing(WindowClosingEventArgs e)
