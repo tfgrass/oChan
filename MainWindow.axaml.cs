@@ -106,7 +106,7 @@ namespace oChan
         {
             var trayIcon = new TrayIcon
             {
-                Icon = new WindowIcon(AssetLoader.Open(new Uri("avares://oChan/Assets/ochan.png"))),
+                Icon = new WindowIcon(AssetLoader.Open(new Uri("avares://oChan/Assets/ochan-white.png"))),
                 ToolTipText = "oChan - Image Downloader"
             };
 
