@@ -13,7 +13,7 @@ public class EightKunBoard : BaseBoard
 {
     public override IImageBoard ImageBoard { get; }
     public override string BoardCode { get; }
-    public override string Name { get; }
+    public override string Name { get; protected set; }  // Allow setting the Name property
     public override string NiceName => $"/{BoardCode}/ - {Name}";
     public override Uri BoardUri { get; }
 
@@ -23,8 +23,45 @@ public class EightKunBoard : BaseBoard
         BoardUri = boardUri ?? throw new ArgumentNullException(nameof(boardUri));
 
         BoardCode = ExtractBoardCode(boardUri);
-        Name = BoardCode;
+        Name = BoardCode;  // Set Name initially to BoardCode
+
+        // Fetch board name asynchronously
+        Task.Run(async () => await FetchBoardNameAsync());
+
         Log.Information("Initialized EightKunBoard for /{BoardCode}/", BoardCode);
+    }
+
+    private async Task FetchBoardNameAsync()
+    {
+        try
+        {
+            HttpClient client = ImageBoard.GetHttpClient();
+            string boardsUrl = "https://8kun.top/boards.json";  // Use API to get metadata for boards
+            HttpResponseMessage response = await client.GetAsync(boardsUrl);
+            response.EnsureSuccessStatusCode();
+
+            string json = await response.Content.ReadAsStringAsync();
+            JArray boardsData = JArray.Parse(json);
+
+            foreach (JToken board in boardsData)
+            {
+                if (board["uri"].ToString() == BoardCode)
+                {
+                    Name = board["title"].ToString();  // Assign the board name to the Name property
+                    Log.Information("Fetched board name: {BoardName} for /{BoardCode}/", Name, BoardCode);
+                    break;
+                }
+            }
+
+            if (Name == BoardCode)
+            {
+                Log.Warning("Board name not found for /{BoardCode}/, using BoardCode as name", BoardCode);
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Error fetching board name for /{BoardCode}/", BoardCode);
+        }
     }
 
     public override async Task<IEnumerable<IThread>> GetThreadsAsync()

@@ -50,6 +50,22 @@
                               PointerPressed="OnThreadPointerPressed" 
                               DoubleTapped="OnThreadDoubleTapped">
                         <DataGrid.Columns>
+                            <DataGridTemplateColumn Header="Host" Width="100">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate x:DataType="interfaces:IThread">
+                                        <TextBlock Text="{Binding Board.ImageBoard.NiceName}" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+
+                            <DataGridTemplateColumn Header="Board" Width="100">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate x:DataType="interfaces:IThread">
+                                        <TextBlock Text="{Binding Board.NiceName}" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+
                             <!-- Thread ID Column -->
                             <DataGridTemplateColumn Header="Thread ID">
                                 <DataGridTemplateColumn.CellTemplate>
@@ -114,13 +130,21 @@
                               DoubleTapped="OnBoardDoubleTapped">
                         <DataGrid.Columns>
                             <!-- Board URL Column -->
-                            <DataGridTemplateColumn Header="Board URL" Width="200">
+                            <DataGridTemplateColumn Header="Host" Width="100">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate x:DataType="interfaces:IBoard">
-                                        <TextBlock Text="{Binding BoardUri}" />
+                                        <TextBlock Text="{Binding ImageBoard.NiceName}" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>                            
+                            <DataGridTemplateColumn Header="Board" Width="200">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate x:DataType="interfaces:IBoard">
+                                        <TextBlock Text="{Binding NiceName}" />
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>
+                            
                         </DataGrid.Columns>
 
                         <!-- ContextMenu for right-clicking on a row -->

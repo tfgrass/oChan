@@ -14,7 +14,7 @@ public abstract class BaseBoard : IBoard, INotifyPropertyChanged
 {
     public abstract IImageBoard ImageBoard { get; }
     public abstract string BoardCode { get; }
-    public abstract string Name { get; }
+    public abstract string Name { get; protected set; }
     public abstract string NiceName { get; }
     public abstract Uri BoardUri { get; }
 
