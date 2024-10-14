@@ -54,7 +54,8 @@ namespace oChan
         private string GetDefaultDownloadPath()
         {
             // Provide OS-specific download paths
-            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "oChanDownloads");
+            string baseDirectory = AppContext.BaseDirectory;
+            return Path.Combine("Downloads");
         }
 
         public static Config LoadConfig()
