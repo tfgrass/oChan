@@ -1,7 +1,6 @@
-// File: AboutWindow.axaml.cs
-
 using Avalonia.Controls;
-using Avalonia.Interactivity;
+using Avalonia.Input;
+using System.Diagnostics;
 
 namespace oChan
 {
@@ -12,9 +11,21 @@ namespace oChan
             InitializeComponent();
         }
 
-        private void OnCloseButtonClick(object sender, RoutedEventArgs e)
+        private void OnLinkPressed(object sender, PointerPressedEventArgs e)
         {
-            Close();
+            if (sender is TextBlock textBlock && textBlock.Tag is string uri)
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = uri,
+                    UseShellExecute = true
+                });
+            }
+        }
+
+        private void OnCloseButtonClick(object sender, Avalonia.Interactivity.RoutedEventArgs e)
+        {
+            this.Close();
         }
     }
 }

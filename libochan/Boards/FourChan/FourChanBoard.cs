@@ -13,9 +13,10 @@ public class FourChanBoard : BaseBoard
 {
     public override IImageBoard ImageBoard { get; }
     public override string BoardCode { get; }
-    public override string Name { get; }
+    public override string Name { get; protected set; }
     public override string NiceName => $"/{BoardCode}/ - {Name}";
     public override Uri BoardUri { get; }
+
 
     public FourChanBoard(IImageBoard imageBoard, Uri boardUri)
     {
@@ -24,8 +25,52 @@ public class FourChanBoard : BaseBoard
 
         // Extract board code from URI
         BoardCode = ExtractBoardCode(boardUri);
-        Name = BoardCode; // 4chan doesn't provide board names in the URL
+        // Initialize Name as BoardCode initially until the actual name is fetched
+        Name = BoardCode;
+
+        // Fetch board name from the API asynchronously
+        Task.Run(async () => await FetchBoardNameAsync());
+
         Log.Information("Initialized FourChanBoard for /{BoardCode}/", BoardCode);
+    }
+
+    private async Task FetchBoardNameAsync()
+    {
+        try
+        {
+            HttpClient client = ImageBoard.GetHttpClient();
+            string boardsUrl = "https://a.4cdn.org/boards.json";
+            HttpResponseMessage response = await client.GetAsync(boardsUrl);
+            response.EnsureSuccessStatusCode();
+
+            string json = await response.Content.ReadAsStringAsync();
+            dynamic boardsData = JsonConvert.DeserializeObject(json);
+
+            if (boardsData == null)
+            {
+                Log.Error("Failed to fetch boards data from {BoardsUrl}", boardsUrl);
+                return;
+            }
+
+            foreach (dynamic board in boardsData["boards"])
+            {
+                if (board.board == BoardCode)
+                {
+                    Name = board.title;
+                    Log.Information("Fetched board name: {BoardName} for /{BoardCode}/", Name, BoardCode);
+                    break;
+                }
+            }
+
+            if (Name == BoardCode)
+            {
+                Log.Warning("Board name not found for /{BoardCode}/, using BoardCode as name", BoardCode);
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Error fetching board name for /{BoardCode}/", BoardCode);
+        }
     }
 
     public override async Task<IEnumerable<IThread>> GetThreadsAsync()

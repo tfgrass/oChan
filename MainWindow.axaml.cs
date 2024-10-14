@@ -11,6 +11,9 @@ using Serilog;
 using System;
 using System.Linq;
 using Avalonia.Input.Platform;
+using Avalonia.Controls.Notifications;
+using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Platform;
 
 namespace oChan
 {
@@ -21,6 +24,7 @@ namespace oChan
 
         private Registry _Registry;
         private DownloadQueue sharedDownloadQueue;
+        private WindowNotificationManager notificationManager;
 
         public MainWindow()
         {
@@ -57,7 +61,129 @@ namespace oChan
 
             // Handle clipboard paste (CTRL+V or equivalent)
             this.AddHandler(KeyDownEvent, OnKeyDown, handledEventsToo: true);
+
+            // Initialize the notification manager
+            notificationManager = new WindowNotificationManager(this)
+            {
+                Position = NotificationPosition.TopRight,
+                MaxItems = 3
+            };
+
+            // Initialize the tray icon
+            SetupTrayIcon();
         }
+        // Method to open the download folder
+        private void OpenDownloadFolder()
+        {
+            try
+            {
+                string downloadFolder = new Config().DownloadPath;
+                if (Directory.Exists(downloadFolder))
+                {
+                    var psi = new System.Diagnostics.ProcessStartInfo
+                    {
+                        FileName = downloadFolder,
+                        UseShellExecute = true
+                    };
+                    System.Diagnostics.Process.Start(psi);
+                }
+                else
+                {
+                    Log.Warning("Download folder not found: {DownloadPath}", downloadFolder);
+                    notificationManager.Show(new Notification("Error", "Download folder not found.", NotificationType.Error));
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Error opening download folder.");
+            }
+        }
+
+
+
+        // Method to set up the tray icon
+        private void SetupTrayIcon()
+        {
+            var trayIcon = new TrayIcon
+            {
+                Icon = new WindowIcon("Assets/ochan.png"),
+                ToolTipText = "oChan - Image Downloader"
+            };
+
+            // Context menu for the tray icon
+            var menu = new NativeMenu();
+
+            // Create "Open" menu item with icon
+            var openMenuItem = new NativeMenuItem { Header = "Open" };
+            openMenuItem.Icon = new Avalonia.Media.Imaging.Bitmap("Assets/icons/list.png");
+            openMenuItem.Click += (s, e) => Show();
+            menu.Items.Add(openMenuItem);
+
+            // Create "Open Download Folder" menu item with icon
+            var openDownloadFolderMenuItem = new NativeMenuItem { Header = "Open Download Folder" };
+            openDownloadFolderMenuItem.Icon = new Avalonia.Media.Imaging.Bitmap("Assets/icons/folder.png");
+            openDownloadFolderMenuItem.Click += (s, e) => OpenDownloadFolder();
+            menu.Items.Add(openDownloadFolderMenuItem);
+
+            // Create "Add URLs from Clipboard" menu item with icon
+            var addUrlsFromClipboardMenuItem = new NativeMenuItem { Header = "Add URLs from Clipboard" };
+            addUrlsFromClipboardMenuItem.Icon = new Avalonia.Media.Imaging.Bitmap("Assets/icons/clipboard.png");
+            addUrlsFromClipboardMenuItem.Click += async (s, e) => await AddUrlsFromClipboard();
+            menu.Items.Add(addUrlsFromClipboardMenuItem);
+
+            // Create "Exit" menu item with icon
+            var exitMenuItem = new NativeMenuItem { Header = "Exit" };
+            exitMenuItem.Icon = new Avalonia.Media.Imaging.Bitmap("Assets/icons/power.png");
+            exitMenuItem.Click += (s, e) => CloseApplication();
+            menu.Items.Add(exitMenuItem);
+
+            trayIcon.Menu = menu;
+
+            trayIcon.Clicked += (s, e) =>
+            {
+                if (this.IsVisible)
+                {
+                    Hide();
+                }
+                else
+                {
+                    Show();
+                }
+            };
+
+            trayIcon.IsVisible = true;
+        }
+
+
+
+
+        // Handle closing the application gracefully
+        private void CloseApplication()
+        {
+            // Perform cleanup and notify the user (optional)
+            notificationManager.Show(new Avalonia.Controls.Notifications.Notification("Exiting", "The application will close now.", NotificationType.Information));
+
+            // Make sure to explicitly exit the application
+            Dispatcher.UIThread.Post(() =>
+            {
+                Environment.Exit(0);  // Exit the application entirely
+            });
+        }
+
+
+        // Handle window closing (minimize to tray)
+        protected override void OnClosing(WindowClosingEventArgs e)
+        {
+            base.OnClosing(e);
+
+            // Minimize to tray on close instead of exiting (optional)
+            if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())
+            {
+                e.Cancel = true;  // Cancel window close
+                Hide();           // Hide window to minimize to tray
+            }
+        }
+
         // Handle Enter key in the TextBox to trigger AddUrl functionality
         private void OnUrlInputKeyDown(object? sender, KeyEventArgs e)
         {
@@ -68,6 +194,7 @@ namespace oChan
                 addUrlButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             }
         }
+
         // Event handler for the "Add" button
         private async void OnAddUrl(object sender, RoutedEventArgs e)
         {
@@ -151,7 +278,6 @@ namespace oChan
             }
         }
 
-
         // Utility method to discover URLs from a given string
         private string[] DiscoverUrls(string text)
         {
@@ -162,8 +288,6 @@ namespace oChan
             Log.Information("Discovered {Count} URLs from the clipboard.", urls.Length);
             return urls;
         }
-
-
 
         // Handle clipboard paste (CTRL+V)
         private async void OnKeyDown(object? sender, KeyEventArgs e)
@@ -179,11 +303,8 @@ namespace oChan
                 // Add URLs from clipboard
                 await AddUrlsFromClipboard();
                 urlInput.Text = string.Empty;
-
             }
         }
-
-
 
         // Handle thread removal
         private void OnThreadRemoved(IThread thread, bool abort)
