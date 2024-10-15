@@ -48,7 +48,8 @@
                               IsReadOnly="True"
                               SelectionMode="Single"
                               PointerPressed="OnThreadPointerPressed" 
-                              DoubleTapped="OnThreadDoubleTapped">
+                              DoubleTapped="OnThreadDoubleTapped"
+                              CanUserResizeColumns="True">
                         <DataGrid.Columns>
                             <DataGridTemplateColumn Header="Host" Width="100">
                                 <DataGridTemplateColumn.CellTemplate>
@@ -136,7 +137,8 @@
                               CanUserSortColumns="True"
                               HeadersVisibility="All"
                               PointerPressed="OnBoardPointerPressed" 
-                              DoubleTapped="OnBoardDoubleTapped">
+                              DoubleTapped="OnBoardDoubleTapped"
+                              CanUserResizeColumns="True">
                         <DataGrid.Columns>
                             <!-- Board URL Column -->
                             <DataGridTemplateColumn Header="Host" Width="100">
