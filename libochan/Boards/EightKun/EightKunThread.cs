@@ -14,6 +14,8 @@ using Serilog;
 
 public class EightKunThread : BaseThread
 {
+    private readonly Config _config; // Reference to the config
+
     public override IBoard Board { get; }
     public override string ThreadId { get; }
     public override string Title { get; set; }
@@ -22,6 +24,7 @@ public class EightKunThread : BaseThread
 
     public EightKunThread(IBoard board, Uri threadUri)
     {
+        _config = Config.LoadConfig(); // Load the configuration
         Board = board ?? throw new ArgumentNullException(nameof(board));
         ThreadUri = threadUri ?? throw new ArgumentNullException(nameof(threadUri));
 
@@ -109,7 +112,7 @@ public class EightKunThread : BaseThread
                 // Use the board's unique filename
                 string fileName = $"{mediaIdentifier}{ext}";
                 fileName = SanitizeFileName(fileName);
-                string destinationPath = Path.Combine("Downloads", Board.BoardCode, ThreadId, fileName);
+                string destinationPath = Path.Combine(_config.DownloadPath, Board.BoardCode, ThreadId, fileName);
 
                 DownloadItem downloadItem = new DownloadItem(new Uri(imageUrl), destinationPath, Board.ImageBoard, this, mediaIdentifier);
                 queue.EnqueueDownload(downloadItem);
@@ -131,7 +134,7 @@ public class EightKunThread : BaseThread
                     // Use the board's unique filename
                     string fileName = $"{mediaIdentifier}{ext}";
                     fileName = SanitizeFileName(fileName);
-                    string destinationPath = Path.Combine("Downloads", Board.BoardCode, ThreadId, fileName);
+                    string destinationPath = Path.Combine(_config.DownloadPath, Board.BoardCode, ThreadId, fileName);
 
                     DownloadItem downloadItem = new DownloadItem(new Uri(imageUrl), destinationPath, Board.ImageBoard, this, mediaIdentifier);
                     queue.EnqueueDownload(downloadItem);
