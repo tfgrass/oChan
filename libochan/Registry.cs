@@ -2,6 +2,7 @@ namespace oChan
 {
     using System;
     using System.Collections.Generic;
+    using System.Runtime.InteropServices;  // For detecting the OS
     using Serilog;
     using oChan.Interfaces;
     using oChan.Boards.FourChan;
@@ -18,10 +19,17 @@ namespace oChan
         public Registry()
         {
             // Set up logging configuration
-            Log.Logger = new LoggerConfiguration()
+            var loggerConfig = new LoggerConfiguration()
                 .MinimumLevel.Debug()   // Set the minimum log level
-                .WriteTo.Console()      // Output logs to the console
-                .CreateLogger();
+                .WriteTo.Console();     // Output logs to the console
+
+            // Check if the OS is Windows and sink logs into a file
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                loggerConfig.WriteTo.File("logs/oChan.log", rollingInterval: RollingInterval.Day);  // Log to file on Windows
+            }
+
+            Log.Logger = loggerConfig.CreateLogger();
 
             Log.Information("Registry initialized with logging configured.");
 
