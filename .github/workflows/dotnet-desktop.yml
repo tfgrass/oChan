@@ -1,10 +1,12 @@
-name: .NET Desktop Build
+name: .NET Build and Release
 
 on:
   push:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
+  release:
+    types: [published]
 
 jobs:
   build:
@@ -21,10 +23,10 @@ jobs:
     - name: Setup .NET
       uses: actions/setup-dotnet@v3
       with:
-        dotnet-version: '8.0.x'  # Match your project's target framework
+        dotnet-version: '8.0.x'
 
     - name: Restore dependencies
-      run: dotnet restore oChan.sln  # Reference your oChan solution file
+      run: dotnet restore oChan.sln
 
     - name: Publish self-contained single-file executable
       run: |
@@ -36,3 +38,26 @@ jobs:
         name: oChan-${{ matrix.runtime }}
         path: publish-output/${{ matrix.runtime }}/
         retention-days: 30
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Download all build artifacts
+      uses: actions/download-artifact@v3
+      with:
+        path: build-artifacts
+
+    - name: Create release assets
+      run: |
+        mkdir -p release-assets
+        cp -r build-artifacts/* release-assets/
+
+    - name: Upload release assets to GitHub
+      uses: actions/upload-release-asset@v3
+      with:
+        upload_url: ${{ github.event.release.upload_url }}
+        asset_path: release-assets/
+        asset_name: oChan-${{ matrix.runtime }}.zip
+        label: oChan-${{ matrix.runtime }}
