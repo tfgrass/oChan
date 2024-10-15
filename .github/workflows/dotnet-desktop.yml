@@ -32,7 +32,12 @@ jobs:
 
     - name: Create platform-specific zip
       run: |
-        zip -r oChan-${{ matrix.runtime }}.zip publish-output/${{ matrix.runtime }}
+        if [ "${{ matrix.runtime }}" = "win-x64" ]; then
+          powershell Compress-Archive -Path publish-output/win-x64/* -DestinationPath oChan-${{ matrix.runtime }}.zip;
+        else
+          zip -r oChan-${{ matrix.runtime }}.zip publish-output/${{ matrix.runtime }};
+        fi
+      shell: bash
 
     - name: Upload platform-specific zip artifacts
       uses: actions/upload-artifact@v3
