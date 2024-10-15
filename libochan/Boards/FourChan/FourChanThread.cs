@@ -79,7 +79,7 @@ public class FourChanThread : BaseThread
                 Status = "Downloading"; 
             }
 
-            foreach (dynamic post in postsWithImages)
+            foreach (var post in postsWithImages)
             {
                 if (string.IsNullOrWhiteSpace(post.Ext) || post.Tim == 0) continue;
 
