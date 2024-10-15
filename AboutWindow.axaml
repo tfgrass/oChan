@@ -27,8 +27,8 @@
             <TextBlock Grid.Row="3" TextWrapping="Wrap" HorizontalAlignment="Left">
                 Written by Tomka (GitHub: 
                 <TextBlock Foreground="Blue" TextDecorations="Underline" Text="tfgrass" Cursor="Hand" 
-                           Tag="https://github.com/tfgrass" PointerPressed="OnLinkPressed"/>
-                ), formerly known as themirage.
+                           Tag="https://github.com/tfgrass" PointerPressed="OnLinkPressed"/>)
+                , formerly known as themirage.
             </TextBlock>
 
             <TextBlock Grid.Row="4" Margin="0,10,0,0" TextWrapping="Wrap" HorizontalAlignment="Left">
