@@ -9,8 +9,8 @@
         x:DataType="local:SettingsWindow"
         Title="Settings"
         Width="330"
-        Height="400">
-    <StackPanel Margin="10">
+        Height="330">
+    <StackPanel Margin="10" VerticalAlignment="Center">
         <TextBlock Text="Settings" FontSize="24" FontWeight="Bold" HorizontalAlignment="Center" Margin="0,0,0,10"/>
         
         <!-- Download Path Setting -->

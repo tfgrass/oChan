@@ -27,9 +27,15 @@ namespace oChan.Boards.FourChan
             return Regex.IsMatch(uri.AbsolutePath, @"^/\w+/thread/\d+");
         }
 
+        // Updated regex to accept /w/ and /w/catalog
         public override bool IsBoardUri(Uri uri)
         {
-            return Regex.IsMatch(uri.AbsolutePath, @"^/\w+/?$");
+            // This regex matches:
+            // - /w
+            // - /w/
+            // - /w/catalog
+            // - /w/catalog/
+            return Regex.IsMatch(uri.AbsolutePath, @"^/\w+(/catalog)?/?$");
         }
 
         public override IBoard GetBoard(Uri boardUri)
@@ -38,6 +44,20 @@ namespace oChan.Boards.FourChan
             {
                 Log.Error("Board URI is null.");
                 throw new ArgumentNullException(nameof(boardUri));
+            }
+
+            // Normalize the board URI by removing /catalog if present
+            string path = boardUri.AbsolutePath;
+            if (path.EndsWith("/catalog", StringComparison.OrdinalIgnoreCase))
+            {
+                path = path.Substring(0, path.Length - "/catalog".Length);
+                // Ensure the path ends with a slash
+                if (!path.EndsWith("/"))
+                {
+                    path += "/";
+                }
+                boardUri = new Uri($"{BaseUri}{path}");
+                Log.Debug("Normalized board URI by removing /catalog: {BoardUri}", boardUri);
             }
 
             Log.Information("Creating FourChanBoard for URI: {BoardUri}", boardUri);

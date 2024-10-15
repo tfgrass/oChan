@@ -15,6 +15,8 @@ using Serilog;
 
 public class FourChanThread : BaseThread
 {
+    private readonly Config _config; // Reference to the config
+
     public override IBoard Board { get; }
     public override string ThreadId { get; }
     public override string Title { get; set; }
@@ -23,6 +25,8 @@ public class FourChanThread : BaseThread
 
     public FourChanThread(IBoard board, Uri threadUri)
     {
+        _config = Config.LoadConfig(); // Load the configuration
+        Log.Verbose("Initialized FourChanThread with config: {Config}", _config);
         Board = board ?? throw new ArgumentNullException(nameof(board));
         ThreadUri = threadUri ?? throw new ArgumentNullException(nameof(threadUri));
 
@@ -75,7 +79,7 @@ public class FourChanThread : BaseThread
                 Status = "Downloading"; 
             }
 
-            foreach (dynamic post in postsWithImages)
+            foreach (var post in postsWithImages)
             {
                 if (string.IsNullOrWhiteSpace(post.Ext) || post.Tim == 0) continue;
 
@@ -88,7 +92,9 @@ public class FourChanThread : BaseThread
                 }
 
                 string imageUrl = $"https://i.4cdn.org/{boardCode}/{post.Tim}{post.Ext}";
-                string destinationPath = Path.Combine("Downloads", boardCode, ThreadId, $"{post.Filename}{post.Ext}");
+                
+                // Use the _config.DownloadPath instead of the local path
+                string destinationPath = Path.Combine(_config.DownloadPath, boardCode, ThreadId, $"{post.Filename}{post.Ext}");
 
                 DownloadItem downloadItem = new DownloadItem(new Uri(imageUrl), destinationPath, Board.ImageBoard, this, mediaIdentifier);
                 queue.EnqueueDownload(downloadItem);
