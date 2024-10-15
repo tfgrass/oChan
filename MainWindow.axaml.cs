@@ -10,14 +10,24 @@ using oChan.Interfaces;
 using Serilog;
 using System;
 using System.Linq;
-using Avalonia.Input.Platform;
 using Avalonia.Controls.Notifications;
-using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Platform;
 using Avalonia.Media.Imaging;
+using System.Text.Json;
+
+using System.Collections.Generic;
+using System.Threading.Tasks;
 
 namespace oChan
 {
+    // Define the SavedUrls class within the namespace
+    public class SavedUrls
+    {
+        public List<string> ThreadUrls { get; set; } = new List<string>();
+        public List<string> BoardUrls { get; set; } = new List<string>();
+    }
+
+
     public partial class MainWindow : Window
     {
         public ObservableCollection<IThread> UrlList { get; set; }
@@ -26,6 +36,8 @@ namespace oChan
         private Registry _Registry;
         private DownloadQueue sharedDownloadQueue;
         private WindowNotificationManager notificationManager;
+
+        private const string SavedUrlsFileName = "saved_urls.json";
 
         public MainWindow()
         {
@@ -72,6 +84,101 @@ namespace oChan
 
             // Initialize the tray icon
             SetupTrayIcon();
+
+            // Load saved URLs if the setting is enabled
+            var config = _Registry.GetConfig();
+            if (config.SaveUrlsOnExit)
+            {
+                // Fire and forget the async loading
+                _ = LoadUrls();
+            }
+        }
+
+        /// <summary>
+        /// Saves the current thread and board URLs to a file.
+        /// </summary>
+        private void SaveUrls()
+        {
+            try
+            {
+                var savedUrls = new SavedUrls
+                {
+                    ThreadUrls = UrlList.Select(t => t.ThreadUri.ToString()).ToList(),
+                    BoardUrls = BoardsList.Select(b => b.BoardUri.ToString()).ToList()
+                };
+
+                string configDir = Config.GetConfigDirectory();
+                string filePath = Path.Combine(configDir, SavedUrlsFileName);
+
+                var options = new JsonSerializerOptions
+                {
+                    WriteIndented = true,
+                    TypeInfoResolver = ConfigJsonContext.Default
+                };
+
+                string json = JsonSerializer.Serialize(savedUrls, options);
+                File.WriteAllText(filePath, json);
+
+                Log.Information("Successfully saved URLs to {FilePath}", filePath);
+                notificationManager.Show(new Notification("Success", "URLs have been saved successfully.", NotificationType.Success));
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Failed to save URLs on exit.");
+                notificationManager.Show(new Notification("Error", "Failed to save URLs on exit.", NotificationType.Error));
+            }
+        }
+
+        /// <summary>
+        /// Loads thread and board URLs from a file.
+        /// </summary>
+        private async Task LoadUrls()
+        {
+            try
+            {
+                string configDir = Config.GetConfigDirectory();
+                string filePath = Path.Combine(configDir, SavedUrlsFileName);
+
+                if (!File.Exists(filePath))
+                {
+                    Log.Warning("Saved URLs file not found at {FilePath}.", filePath);
+                    return;
+                }
+
+                var options = new JsonSerializerOptions
+                {
+                    TypeInfoResolver = ConfigJsonContext.Default
+                };
+
+                string json = await File.ReadAllTextAsync(filePath);
+                var savedUrls = JsonSerializer.Deserialize<SavedUrls>(json, options);
+
+                if (savedUrls == null)
+                {
+                    Log.Warning("No URLs found in the saved URLs file.");
+                    return;
+                }
+
+                // Load Thread URLs
+                foreach (var threadUrl in savedUrls.ThreadUrls)
+                {
+                    await AddUrl(threadUrl);
+                }
+
+                // Load Board URLs
+                foreach (var boardUrl in savedUrls.BoardUrls)
+                {
+                    await AddUrl(boardUrl);
+                }
+
+                Log.Information("Successfully loaded URLs from {FilePath}", filePath);
+                notificationManager.Show(new Notification("Success", "URLs have been loaded successfully.", NotificationType.Success));
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Failed to load saved URLs on startup.");
+                notificationManager.Show(new Notification("Error", "Failed to load saved URLs on startup.", NotificationType.Error));
+            }
         }
 
         // Method to open the download folder
@@ -79,7 +186,7 @@ namespace oChan
         {
             try
             {
-                string downloadFolder = new Config().DownloadPath;
+                string downloadFolder = _Registry.GetConfig().DownloadPath;
                 if (Directory.Exists(downloadFolder))
                 {
                     var psi = new System.Diagnostics.ProcessStartInfo
@@ -98,6 +205,7 @@ namespace oChan
             catch (Exception ex)
             {
                 Log.Error(ex, "Error opening download folder.");
+                notificationManager.Show(new Notification("Error", "Failed to open download folder.", NotificationType.Error));
             }
         }
 
@@ -160,6 +268,13 @@ namespace oChan
             // Perform cleanup and notify the user (optional)
             notificationManager.Show(new Avalonia.Controls.Notifications.Notification("Exiting", "The application will close now.", NotificationType.Information));
 
+            // Save URLs if the setting is enabled
+            var config = _Registry.GetConfig();
+            if (config.SaveUrlsOnExit)
+            {
+                SaveUrls();
+            }
+
             // Make sure to explicitly exit the application
             Dispatcher.UIThread.Post(() =>
             {
@@ -168,13 +283,12 @@ namespace oChan
         }
 
         // Handle window closing (minimize to tray)
-        // Handle window closing (minimize to tray)
         protected override void OnClosing(WindowClosingEventArgs e)
         {
             base.OnClosing(e);
 
             // Check the config for minimizing to tray
-            var config = Config.LoadConfig();
+            var config = _Registry.GetConfig();
 
             if (config.MinimizeToTray)
             {
@@ -190,14 +304,13 @@ namespace oChan
                 // Save URLs on exit if configured to do so
                 if (config.SaveUrlsOnExit)
                 {
-                //    SaveUrls();
+                    SaveUrls();
                 }
 
                 // Proceed with application exit
                 CloseApplication();
             }
         }
-
 
         // Handle Enter key in the TextBox to trigger AddUrl functionality
         private void OnUrlInputKeyDown(object? sender, KeyEventArgs e)
@@ -228,7 +341,7 @@ namespace oChan
         }
 
         // Method to add a single URL
-        private async System.Threading.Tasks.Task AddUrl(string url)
+        private async Task AddUrl(string url)
         {
             try
             {
@@ -254,7 +367,7 @@ namespace oChan
                     if (board != null)
                     {
                         board.ThreadDiscovered += OnThreadDiscovered;
-                        board.StartMonitoring(60);
+                        board.StartMonitoring(_Registry.GetConfig().RecheckTimer);
 
                         Dispatcher.UIThread.Post(() =>
                         {
@@ -264,17 +377,19 @@ namespace oChan
                     else
                     {
                         Log.Warning("No image board could handle the URL: {Url}", url);
+                        notificationManager.Show(new Notification("Warning", "No image board could handle the provided URL.", NotificationType.Warning));
                     }
                 }
             }
             catch (Exception ex)
             {
                 Log.Error(ex, "An error occurred while handling the URL: {Url}", url);
+                notificationManager.Show(new Notification("Error", $"An error occurred: {ex.Message}", NotificationType.Error));
             }
         }
 
         // Method to discover and add URLs from the clipboard
-        private async System.Threading.Tasks.Task AddUrlsFromClipboard()
+        private async Task AddUrlsFromClipboard()
         {
             var clipboard = this.Clipboard; // Access clipboard using the TopLevel instance
             var clipboardText = await clipboard.GetTextAsync();
@@ -282,6 +397,13 @@ namespace oChan
             if (!string.IsNullOrWhiteSpace(clipboardText))
             {
                 var urls = DiscoverUrls(clipboardText);
+                if (urls.Length == 0)
+                {
+                    Log.Information("No valid URLs found in the clipboard.");
+                    notificationManager.Show(new Notification("Info", "No valid URLs found in the clipboard.", NotificationType.Information));
+                    return;
+                }
+
                 foreach (var url in urls)
                 {
                     await AddUrl(url);
@@ -290,6 +412,7 @@ namespace oChan
             else
             {
                 Log.Information("No URLs found in the clipboard.");
+                notificationManager.Show(new Notification("Info", "Clipboard is empty or does not contain URLs.", NotificationType.Information));
             }
         }
 
@@ -297,7 +420,8 @@ namespace oChan
         private string[] DiscoverUrls(string text)
         {
             var urls = text.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.RemoveEmptyEntries)
-                           .Where(line => Uri.IsWellFormedUriString(line, UriKind.Absolute))
+                           .Where(line => Uri.IsWellFormedUriString(line.Trim(), UriKind.Absolute))
+                           .Select(line => line.Trim())
                            .ToArray();
 
             Log.Information("Discovered {Count} URLs from the clipboard.", urls.Length);
@@ -334,6 +458,9 @@ namespace oChan
 
                 UrlList.Remove(thread);
                 _Registry.RemoveThread(thread.ThreadUri.ToString());
+
+                // Optionally notify the user
+                notificationManager.Show(new Notification("Thread Removed", $"Thread {thread.NiceName} has been removed.", NotificationType.Warning));
             });
         }
 
@@ -346,13 +473,16 @@ namespace oChan
                 board.StopMonitoring();
                 BoardsList.Remove(board);
                 _Registry.RemoveBoard(board.BoardUri.ToString());
+
+                // Optionally notify the user
+                notificationManager.Show(new Notification("Board Removed", $"Board {board.NiceName} has been removed.", NotificationType.Warning));
             });
         }
 
         // Handle thread directory opening
         private void OpenThreadDirectory(IThread thread)
         {
-            string directoryPath = Path.Combine("Downloads", thread.Board.BoardCode, thread.ThreadId);
+            string directoryPath = Path.Combine(_Registry.GetConfig().DownloadPath, thread.Board.BoardCode, thread.ThreadId);
             if (Directory.Exists(directoryPath))
             {
                 OpenDirectory(directoryPath);
@@ -360,13 +490,14 @@ namespace oChan
             else
             {
                 Log.Warning("Directory not found for thread {ThreadId}: {DirectoryPath}", thread.ThreadId, directoryPath);
+                notificationManager.Show(new Notification("Error", "Thread download directory not found.", NotificationType.Error));
             }
         }
 
         // Handle board directory opening
         private void OpenBoardDirectory(IBoard board)
         {
-            string directoryPath = Path.Combine("Downloads", board.BoardCode);
+            string directoryPath = Path.Combine(_Registry.GetConfig().DownloadPath, board.BoardCode);
             if (Directory.Exists(directoryPath))
             {
                 OpenDirectory(directoryPath);
@@ -374,6 +505,7 @@ namespace oChan
             else
             {
                 Log.Warning("Directory not found for board {BoardCode}: {DirectoryPath}", board.BoardCode, directoryPath);
+                notificationManager.Show(new Notification("Error", "Board download directory not found.", NotificationType.Error));
             }
         }
 
@@ -392,6 +524,7 @@ namespace oChan
             catch (Exception ex)
             {
                 Log.Error(ex, "Error opening directory: {DirectoryPath}", directoryPath);
+                notificationManager.Show(new Notification("Error", "Failed to open directory.", NotificationType.Error));
             }
         }
 
@@ -434,6 +567,9 @@ namespace oChan
                     DownloadQueue = sharedDownloadQueue
                 };
                 await thread.ArchiveAsync(options);
+
+                // Optionally notify the user
+                notificationManager.Show(new Notification("New Thread", $"Thread {thread.NiceName} has been added.", NotificationType.Information));
             });
         }
 
@@ -453,10 +589,14 @@ namespace oChan
 
                         _Registry.RemoveThread(thread.ThreadUri.ToString());
                         Log.Information("Thread with URL {ThreadUri} removed successfully.", thread.ThreadUri);
+
+                        // Optionally notify the user
+                        notificationManager.Show(new Notification("Thread Removed", $"Thread {thread.NiceName} has been removed.", NotificationType.Information));
                     }
                     else
                     {
                         Log.Warning("Thread with URL {ThreadUri} not found in UrlList.", thread.ThreadUri);
+                        notificationManager.Show(new Notification("Warning", "Thread not found in the list.", NotificationType.Warning));
                     }
                 });
             }
@@ -469,6 +609,9 @@ namespace oChan
             {
                 Log.Information("Manually removing board with URL: {BoardUri}", board.BoardUri);
                 OnBoardRemoved(board);
+
+                // Optionally notify the user
+                notificationManager.Show(new Notification("Board Removed", $"Board {board.NiceName} has been removed.", NotificationType.Information));
             }
         }
 
@@ -485,11 +628,13 @@ namespace oChan
                 else
                 {
                     Log.Error("DataGrid SelectedItem is not an IThread instance.");
+                    notificationManager.Show(new Notification("Error", "Selected item is not a valid thread.", NotificationType.Error));
                 }
             }
             else
             {
                 Log.Error("Sender is not a MenuItem.");
+                notificationManager.Show(new Notification("Error", "Invalid menu item.", NotificationType.Error));
             }
         }
 
@@ -506,11 +651,13 @@ namespace oChan
                 else
                 {
                     Log.Error("DataGrid SelectedItem is not an IBoard instance.");
+                    notificationManager.Show(new Notification("Error", "Selected item is not a valid board.", NotificationType.Error));
                 }
             }
             else
             {
                 Log.Error("Sender is not a MenuItem.");
+                notificationManager.Show(new Notification("Error", "Invalid menu item.", NotificationType.Error));
             }
         }
 
@@ -584,7 +731,7 @@ namespace oChan
 
         private void OnBoardDoubleTapped(object? sender, TappedEventArgs e)
         {
-            Log.Debug("Double tapped on a thread.");
+            Log.Debug("Double tapped on a board.");
             var dataGrid = this.FindControl<DataGrid>("BoardsDataGrid");
             if (dataGrid != null && dataGrid.SelectedItem is IBoard board)
             {

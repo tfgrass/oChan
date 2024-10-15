@@ -1,8 +1,10 @@
+// File: ./Config.cs
 using System;
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Serilog;
+using oChan.Models; // Stellen Sie sicher, dass dieser Namespace importiert ist
 
 namespace oChan
 {
@@ -108,9 +110,10 @@ namespace oChan
             Log.Information("Bandwidth Limiter: {BandwidthLimiter} bytes per second", BandwidthLimiter);
         }
     }
+
     [JsonSerializable(typeof(Config))]
+    [JsonSerializable(typeof(SavedUrls))] // Fügen Sie SavedUrls hier hinzu
     public partial class ConfigJsonContext : JsonSerializerContext
     {
     }
 }
-
