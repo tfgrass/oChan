@@ -1,4 +1,5 @@
 namespace oChan.Downloader;
+
 using System;
 using System.Collections.Generic;
 using System.Timers;

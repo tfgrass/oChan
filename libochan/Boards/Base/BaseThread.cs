@@ -17,8 +17,8 @@ public abstract class BaseThread : IThread, INotifyPropertyChanged
     // Event that notifies when the thread should be removed
     public event Action<IThread>? ThreadRemoved;
 
-    private Rechecker _rechecker;
-    private int _recheckIntervalInSeconds = 60; // Default recheck interval
+    private Rechecker? _rechecker;
+    private readonly Config _config; // Reference to the configuration
 
     public abstract IBoard Board { get; }
     public abstract string ThreadId { get; }
@@ -144,7 +144,7 @@ public abstract class BaseThread : IThread, INotifyPropertyChanged
 
     public async Task LoadDownloadedMediaAsync()
     {
-        string filePath = Path.Combine("Downloads", Board.BoardCode, ThreadId, ".downloaded.json");
+        string filePath = Path.Combine(_config.DownloadPath, Board.BoardCode, ThreadId, ".downloaded.json");
 
         if (File.Exists(filePath))
         {
@@ -168,7 +168,7 @@ public abstract class BaseThread : IThread, INotifyPropertyChanged
 
     public async Task SaveDownloadedMediaAsync()
     {
-        string directoryPath = Path.Combine("Downloads", Board.BoardCode, ThreadId);
+        string directoryPath = Path.Combine(_config.DownloadPath, Board.BoardCode, ThreadId);
         string filePath = Path.Combine(directoryPath, ".downloaded.json");
 
         try
@@ -191,7 +191,8 @@ public abstract class BaseThread : IThread, INotifyPropertyChanged
 
     protected BaseThread()
     {
-        StartRechecking(_recheckIntervalInSeconds);
+        _config = Config.LoadConfig(); // Load configuration
+        StartRechecking(_config.RecheckTimer); // Start rechecking with config-defined interval
     }
 
     public void StartRechecking(int intervalInSeconds)
@@ -207,9 +208,8 @@ public abstract class BaseThread : IThread, INotifyPropertyChanged
             });
 
             Log.Information("Starting rechecking for thread {ThreadId} with interval {IntervalInSeconds} seconds", ThreadId, intervalInSeconds);
-            _recheckIntervalInSeconds = intervalInSeconds;
 
-            _rechecker = new Rechecker(new List<IThread> { this }, _recheckIntervalInSeconds);
+            _rechecker = new Rechecker(new List<IThread> { this }, intervalInSeconds);
         }
         else
         {
@@ -226,8 +226,6 @@ public abstract class BaseThread : IThread, INotifyPropertyChanged
             Log.Information("Stopped rechecking for thread {ThreadId}", ThreadId);
         }
     }
-
-    protected virtual int DefaultRecheckInterval => _recheckIntervalInSeconds;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -251,7 +249,6 @@ public abstract class BaseThread : IThread, INotifyPropertyChanged
         Log.Information("Notifying that thread {ThreadId} should be removed, Abort: {Abort}", ThreadId, abort);
         ThreadRemoved?.Invoke(this); // Notify whoever is subscribed to this event (UI or Registry)
 
-        // If 'abort' is true, stop rechecking and cancel any ongoing downloads
         if (abort)
         {
             StopRechecking(); // Stop the rechecker to prevent further checks
