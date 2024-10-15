@@ -18,7 +18,7 @@
             <TextBlock Text="oChan" FontSize="24" FontWeight="Bold" HorizontalAlignment="Center" 
                        Margin="0,0,0,10" Grid.Row="0"/>
             
-            <TextBlock Text="Version v0.1.0 (10/2024)" HorizontalAlignment="Center" 
+            <TextBlock Text="Version v0.6.0a (10/2024)" HorizontalAlignment="Center" 
                        Margin="0,0,0,10" Grid.Row="1"/>
 
             <TextBlock Text="oChan is an imageboard thread and board archiving tool." 

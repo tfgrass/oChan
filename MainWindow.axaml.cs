@@ -17,6 +17,7 @@ using System.Text.Json;
 
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using System.Diagnostics;
 
 namespace oChan
 {
@@ -180,6 +181,64 @@ namespace oChan
                 notificationManager.Show(new Notification("Error", "Failed to load saved URLs on startup.", NotificationType.Error));
             }
         }
+
+        private void OnOpenThreadInBrowserClick(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                var dataGrid = this.FindControl<DataGrid>("ThreadsDataGrid");
+                if (dataGrid?.SelectedItem is IThread thread)
+                {
+                    var url = thread.ThreadUri.ToString();
+                    Process.Start(new ProcessStartInfo
+                    {
+                        FileName = url,
+                        UseShellExecute = true
+                    });
+                    Log.Information("Opened thread URL in browser: {Url}", url);
+                    notificationManager.Show(new Notification("Opened in Browser", $"Thread {thread.NiceName} opened in your default browser.", NotificationType.Success));
+                }
+                else
+                {
+                    Log.Warning("No thread selected or selected item is not an IThread.");
+                    notificationManager.Show(new Notification("Warning", "No thread selected.", NotificationType.Warning));
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Failed to open thread URL in browser.");
+                notificationManager.Show(new Notification("Error", "Failed to open thread in browser.", NotificationType.Error));
+            }
+        }
+        private void OnOpenBoardInBrowserClick(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                var dataGrid = this.FindControl<DataGrid>("BoardsDataGrid");
+                if (dataGrid?.SelectedItem is IBoard board)
+                {
+                    var url = board.BoardUri.ToString();
+                    Process.Start(new ProcessStartInfo
+                    {
+                        FileName = url,
+                        UseShellExecute = true
+                    });
+                    Log.Information("Opened board URL in browser: {Url}", url);
+                    notificationManager.Show(new Notification("Opened in Browser", $"Board {board.NiceName} opened in your default browser.", NotificationType.Success));
+                }
+                else
+                {
+                    Log.Warning("No board selected or selected item is not an IBoard.");
+                    notificationManager.Show(new Notification("Warning", "No board selected.", NotificationType.Warning));
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Failed to open board URL in browser.");
+                notificationManager.Show(new Notification("Error", "Failed to open board in browser.", NotificationType.Error));
+            }
+        }
+
 
         // Method to open the download folder
         private void OpenDownloadFolder()

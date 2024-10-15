@@ -6,7 +6,7 @@
         x:DataType="local:MainWindow"
         Width="800" Height="600"
         Title="oChan"
-        Icon="/Assets/ochan.png">
+        Icon="avares://oChan/Assets/ochan.png">
     <DockPanel>
         <!-- Application Menu -->
         <Menu DockPanel.Dock="Top">
@@ -106,12 +106,21 @@
                         <!-- ContextMenu for right-clicking on a row -->
                         <DataGrid.ContextMenu>
                             <ContextMenu>
-                                <MenuItem Header="Open Directory" 
-                                        Click="OnOpenThreadDirectoryClick" 
-                                        Icon="/Assets/icons/folder.png" />
-                                <MenuItem Header="Remove" 
-                                        Click="OnRemoveThreadMenuItemClick" 
-                                        Icon="/Assets/icons/trash.png" />
+                                <MenuItem Header="Open Directory" Click="OnOpenThreadDirectoryClick">
+                                    <MenuItem.Icon>
+                                        <Image Source="avares://oChan/Assets/icons/folder.png" Width="16" Height="16"/>
+                                    </MenuItem.Icon>
+                                </MenuItem>
+                                <MenuItem Header="Open in Browser" Click="OnOpenThreadInBrowserClick">
+                                    <MenuItem.Icon>
+                                        <Image Source="avares://oChan/Assets/icons/external-link.png" Width="16" Height="16"/>
+                                    </MenuItem.Icon>
+                                </MenuItem>
+                                <MenuItem Header="Remove" Click="OnRemoveThreadMenuItemClick">
+                                    <MenuItem.Icon>
+                                        <Image Source="avares://oChan/Assets/icons/delete.png" Width="16" Height="16"/>
+                                    </MenuItem.Icon>
+                                </MenuItem>
                             </ContextMenu>
                         </DataGrid.ContextMenu>
                     </DataGrid>
@@ -144,18 +153,26 @@
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>
-                            
                         </DataGrid.Columns>
 
                         <!-- ContextMenu for right-clicking on a row -->
                         <DataGrid.ContextMenu>
                             <ContextMenu>
-                                <MenuItem Header="Open Directory" 
-                                        Click="OnOpenBoardDirectoryClick" 
-                                        Icon="/Assets/icons/folder.png" />
-                                <MenuItem Header="Remove" 
-                                        Click="OnRemoveBoardMenuItemClick" 
-                                        Icon="/Assets/icons/trash.png" />
+                                <MenuItem Header="Open Directory" Click="OnOpenBoardDirectoryClick">
+                                    <MenuItem.Icon>
+                                        <Image Source="avares://oChan/Assets/icons/folder.png" Width="16" Height="16"/>
+                                    </MenuItem.Icon>
+                                </MenuItem>
+                                <MenuItem Header="Open in Browser" Click="OnOpenBoardInBrowserClick">
+                                    <MenuItem.Icon>
+                                        <Image Source="avares://oChan/Assets/icons/external-link.png" Width="16" Height="16"/>
+                                    </MenuItem.Icon>
+                                </MenuItem>
+                                <MenuItem Header="Remove" Click="OnRemoveBoardMenuItemClick">
+                                    <MenuItem.Icon>
+                                        <Image Source="avares://oChan/Assets/icons/delete.png" Width="16" Height="16"/>
+                                    </MenuItem.Icon>
+                                </MenuItem>
                             </ContextMenu>
                         </DataGrid.ContextMenu>
                     </DataGrid>
