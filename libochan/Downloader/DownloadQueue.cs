@@ -45,7 +45,7 @@ public class DownloadQueue
         _downloadQueue = new ConcurrentQueue<(DownloadItem, CancellationToken)>();
         _queuedUrls = new HashSet<string>();      // Initialize the set to track enqueued URLs
         _downloadingUrls = new HashSet<string>(); // Initialize the set to track currently downloading URLs
-        _bandwidthLimiter = new BandwidthLimiter(MaxBandwidthBytesPerSecond);
+        _bandwidthLimiter = new BandwidthLimiter();
         _cts = new CancellationTokenSource();
         _workerTasks = new List<Task>();
 

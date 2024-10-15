@@ -5,7 +5,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Serilog;
 
-
 public class BandwidthLimiter
 {
     private readonly SemaphoreSlim _semaphore = new SemaphoreSlim(1, 1);
@@ -13,18 +12,23 @@ public class BandwidthLimiter
     private long _bytesDownloadedThisSecond;
     private DateTime _currentSecondStart;
 
-    public BandwidthLimiter(long maxBytesPerSecond)
+    private readonly Config _config; // Reference to the config
+
+    public BandwidthLimiter()
     {
-        if (maxBytesPerSecond <= 0)
+        _config = Config.LoadConfig(); // Load the configuration
+
+        if (_config.BandwidthLimiter <= 0)
         {
-            Log.Error("Attempted to initialize BandwidthLimiter with non-positive maxBytesPerSecond: {MaxBytesPerSecond}", maxBytesPerSecond);
-            throw new ArgumentException("Max bytes per second must be greater than zero.");
+            Log.Error("Attempted to initialize BandwidthLimiter with non-positive maxBytesPerSecond from config: {MaxBytesPerSecond}", _config.BandwidthLimiter);
+            throw new ArgumentException("Max bytes per second from configuration must be greater than zero.");
         }
 
-        _maxBytesPerSecond = maxBytesPerSecond;
+        _maxBytesPerSecond = _config.BandwidthLimiter;
         _currentSecondStart = DateTime.UtcNow;
 
-        Log.Information("Initialized BandwidthLimiter with maxBytesPerSecond: {MaxBytesPerSecond} ({HumanReadableMaxBytesPerSecond})", _maxBytesPerSecond, Utils.ToHumanReadableSize(_maxBytesPerSecond));
+        Log.Information("Initialized BandwidthLimiter with maxBytesPerSecond from config: {MaxBytesPerSecond} ({HumanReadableMaxBytesPerSecond})", 
+            _maxBytesPerSecond, Utils.ToHumanReadableSize(_maxBytesPerSecond));
     }
 
     public void UpdateMaxBytesPerSecond(long newMax)
@@ -86,4 +90,3 @@ public class BandwidthLimiter
         }
     }
 }
-
