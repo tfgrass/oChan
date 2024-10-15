@@ -33,7 +33,7 @@ jobs:
     - name: Create platform-specific zip
       run: |
         if [ "${{ matrix.runtime }}" = "win-x64" ]; then
-          powershell Compress-Archive -Path publish-output/win-x64/* -DestinationPath oChan-${{ matrix.runtime }}.zip;
+          powershell -command "Compress-Archive -Path (Get-ChildItem -Path publish-output/win-x64 -Recurse) -DestinationPath oChan-${{ matrix.runtime }}.zip";
         else
           zip -r oChan-${{ matrix.runtime }}.zip publish-output/${{ matrix.runtime }};
         fi
