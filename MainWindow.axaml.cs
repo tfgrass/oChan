@@ -168,17 +168,36 @@ namespace oChan
         }
 
         // Handle window closing (minimize to tray)
+        // Handle window closing (minimize to tray)
         protected override void OnClosing(WindowClosingEventArgs e)
         {
             base.OnClosing(e);
 
-            // Minimize to tray on close instead of exiting (optional)
-            if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())
+            // Check the config for minimizing to tray
+            var config = Config.LoadConfig();
+
+            if (config.MinimizeToTray)
             {
-                e.Cancel = true;  // Cancel window close
-                Hide();           // Hide window to minimize to tray
+                // Minimize to tray on close instead of exiting
+                if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())
+                {
+                    e.Cancel = true;  // Cancel window close
+                    Hide();           // Hide window to minimize to tray
+                }
+            }
+            else
+            {
+                // Save URLs on exit if configured to do so
+                if (config.SaveUrlsOnExit)
+                {
+                //    SaveUrls();
+                }
+
+                // Proceed with application exit
+                CloseApplication();
             }
         }
+
 
         // Handle Enter key in the TextBox to trigger AddUrl functionality
         private void OnUrlInputKeyDown(object? sender, KeyEventArgs e)
