@@ -28,7 +28,7 @@ jobs:
 
     - name: Publish self-contained single-file executable
       run: |
-        dotnet publish oChan.sln --configuration Release --output publish-output/${{ matrix.runtime }} -p:PublishSingleFile=true -p:SelfContained=true -p:PublishTrimmed=true -r ${{ matrix.runtime }}
+        dotnet publish oChan.sln --configuration Release --output publish-output/${{ matrix.runtime }} -p:PublishSingleFile=true -p:SelfContained=true -r ${{ matrix.runtime }}
 
     - name: Upload build artifacts
       uses: actions/upload-artifact@v3
