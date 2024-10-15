@@ -32,16 +32,39 @@ jobs:
 
     - name: Create platform-specific zip
       run: |
-        if [ "${{ matrix.runtime }}" = "win-x64" ]; then
-          powershell -command "Compress-Archive -Path (Get-ChildItem -Path publish-output/win-x64 -Recurse) -DestinationPath oChan-${{ matrix.runtime }}.zip";
+        if [[ "${{ matrix.runtime }}" == "win-x64" ]]; then 
+          Compress-Archive -Path publish-output/win-x64/* -DestinationPath oChan-win-x64.zip;
         else
           zip -r oChan-${{ matrix.runtime }}.zip publish-output/${{ matrix.runtime }};
         fi
-      shell: bash
 
     - name: Upload platform-specific zip artifacts
       uses: actions/upload-artifact@v3
       with:
         name: oChan-${{ matrix.runtime }}.zip
         path: oChan-${{ matrix.runtime }}.zip
+        retention-days: 30
+
+  package:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Download all platform-specific zips
+      uses: actions/download-artifact@v3
+      with:
+        path: build-artifacts
+
+    - name: Create one big zip containing all platform zips
+      run: |
+        mkdir -p release-assets
+        mv build-artifacts/* release-assets/
+        cd release-assets
+        zip -r oChan-all-platforms.zip *.zip
+
+    - name: Upload big zip artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: oChan-all-platforms.zip
+        path: release-assets/oChan-all-platforms.zip
         retention-days: 30
