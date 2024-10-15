@@ -1,9 +1,10 @@
-name: .NET Build and Release
+name: .NET Build and Package
 
 on:
   push:
-    tags:
-      - '*'
+    branches: [main]
+  pull_request:
+    branches: [main]
 
 jobs:
   build:
@@ -29,30 +30,37 @@ jobs:
       run: |
         dotnet publish oChan.sln --configuration Release --output publish-output/${{ matrix.runtime }} -p:PublishSingleFile=true -p:SelfContained=true -r ${{ matrix.runtime }}
 
-    - name: Upload build artifacts
+    - name: Create platform-specific zip
+      run: |
+        zip -r oChan-${{ matrix.runtime }}.zip publish-output/${{ matrix.runtime }}
+
+    - name: Upload platform-specific zip artifacts
       uses: actions/upload-artifact@v3
       with:
-        name: oChan-${{ matrix.runtime }}
-        path: publish-output/${{ matrix.runtime }}/
+        name: oChan-${{ matrix.runtime }}.zip
+        path: oChan-${{ matrix.runtime }}.zip
         retention-days: 30
 
-  release:
+  package:
     needs: build
     runs-on: ubuntu-latest
 
     steps:
-    - name: Download all build artifacts
+    - name: Download all platform-specific zips
       uses: actions/download-artifact@v3
       with:
         path: build-artifacts
 
-    - name: Create release assets
+    - name: Create one big zip containing all platform zips
       run: |
         mkdir -p release-assets
-        cp -r build-artifacts/* release-assets/
+        mv build-artifacts/* release-assets/
+        cd release-assets
+        zip -r oChan-all-platforms.zip *.zip
 
-    - name: Create GitHub release
-      uses: softprops/action-gh-release@v2
-      if: startsWith(github.ref, 'refs/tags/')
+    - name: Upload big zip artifact
+      uses: actions/upload-artifact@v3
       with:
-        files: release-assets/*
+        name: oChan-all-platforms.zip
+        path: release-assets/oChan-all-platforms.zip
+        retention-days: 30
