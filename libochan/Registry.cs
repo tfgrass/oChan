@@ -20,11 +20,11 @@ namespace oChan
         {
             // Set up logging configuration
             var loggerConfig = new LoggerConfiguration()
-                .MinimumLevel.Debug()   // Set the minimum log level
+                .MinimumLevel.Error()   // Set the minimum log level
                 .WriteTo.Console();     // Output logs to the console
 
 
-            loggerConfig.WriteTo.File("logs/oChan.log", rollingInterval: RollingInterval.Day);  // Log to file on Windows
+            loggerConfig.WriteTo.File("logs/oChan.log", rollingInterval: RollingInterval.Minute);  // Log to file on Windows
 
             Log.Logger = loggerConfig.CreateLogger();
 

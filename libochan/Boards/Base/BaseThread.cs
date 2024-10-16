@@ -10,7 +10,7 @@ using System.Threading.Tasks;
 using oChan.Downloader;
 using oChan.Interfaces;
 using Serilog;
-using Avalonia.Threading; // Make sure to include this namespace
+using Avalonia.Threading; // For UI thread operations
 
 public abstract class BaseThread : IThread, INotifyPropertyChanged
 {
@@ -19,6 +19,7 @@ public abstract class BaseThread : IThread, INotifyPropertyChanged
 
     private Rechecker? _rechecker;
     private readonly Config _config; // Reference to the configuration
+    private readonly object _syncLock = new object(); // For thread-safe operations on DownloadedMedia
 
     public abstract IBoard Board { get; }
     public abstract string ThreadId { get; }
@@ -70,7 +71,16 @@ public abstract class BaseThread : IThread, INotifyPropertyChanged
         }
     }
 
-    public int DownloadedMediaCount => DownloadedMedia.Count;
+    public int DownloadedMediaCount
+    {
+        get
+        {
+            lock (_syncLock)
+            {
+                return DownloadedMedia.Count;
+            }
+        }
+    }
 
     public string Progress
     {
@@ -118,27 +128,33 @@ public abstract class BaseThread : IThread, INotifyPropertyChanged
 
     public bool IsMediaDownloaded(string mediaIdentifier)
     {
-        bool isDownloaded = DownloadedMedia.Contains(mediaIdentifier);
-        Log.Debug("Media {MediaId} downloaded: {IsDownloaded}", mediaIdentifier, isDownloaded);
-        return isDownloaded;
+        lock (_syncLock)
+        {
+            bool isDownloaded = DownloadedMedia.Contains(mediaIdentifier);
+            Log.Debug("Media {MediaId} downloaded: {IsDownloaded}", mediaIdentifier, isDownloaded);
+            return isDownloaded;
+        }
     }
 
     public void MarkMediaAsDownloaded(string mediaIdentifier)
     {
-        // Ensure that the media is not already in the downloaded set before adding
-        if (!DownloadedMedia.Contains(mediaIdentifier) && DownloadedMedia.Add(mediaIdentifier))
+        lock (_syncLock)
         {
-            OnPropertyChanged(nameof(DownloadedMediaCount));
-            OnPropertyChanged(nameof(Progress));
-
-            if (DownloadedMediaCount == TotalMediaCount)
+            // Ensure that the media is not already in the downloaded set before adding
+            if (!DownloadedMedia.Contains(mediaIdentifier) && DownloadedMedia.Add(mediaIdentifier))
             {
-                Status = "Finished";
+                OnPropertyChanged(nameof(DownloadedMediaCount));
+                OnPropertyChanged(nameof(Progress));
+
+                if (DownloadedMediaCount == TotalMediaCount)
+                {
+                    Status = "Finished";
+                }
             }
-        }
-        else
-        {
-            Log.Warning("Media {MediaId} already marked as downloaded for thread {ThreadId}", mediaIdentifier, ThreadId);
+            else
+            {
+                Log.Warning("Media {MediaId} already marked as downloaded for thread {ThreadId}", mediaIdentifier, ThreadId);
+            }
         }
     }
 
@@ -154,7 +170,10 @@ public abstract class BaseThread : IThread, INotifyPropertyChanged
                 HashSet<string>? downloadedMedia = JsonSerializer.Deserialize<HashSet<string>>(jsonContent);
                 if (downloadedMedia != null)
                 {
-                    DownloadedMedia = downloadedMedia;
+                    lock (_syncLock)
+                    {
+                        DownloadedMedia = downloadedMedia;
+                    }
                 }
 
                 Log.Information("Loaded downloaded media for thread {ThreadId} from {FilePath}", ThreadId, filePath);
@@ -178,7 +197,11 @@ public abstract class BaseThread : IThread, INotifyPropertyChanged
                 Directory.CreateDirectory(directoryPath);
             }
 
-            string jsonContent = JsonSerializer.Serialize(DownloadedMedia);
+            string jsonContent;
+            lock (_syncLock)
+            {
+                jsonContent = JsonSerializer.Serialize(DownloadedMedia);
+            }
             await File.WriteAllTextAsync(filePath, jsonContent);
 
             Log.Information("Saved downloaded media for thread {ThreadId} to {FilePath}", ThreadId, filePath);

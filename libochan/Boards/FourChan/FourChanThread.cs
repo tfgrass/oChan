@@ -16,6 +16,7 @@ using Serilog;
 public class FourChanThread : BaseThread
 {
     private readonly Config _config; // Reference to the config
+    private readonly object _syncLock = new object(); // For thread-safe HashSet operations
 
     public override IBoard Board { get; }
     public override string ThreadId { get; }
@@ -38,6 +39,18 @@ public class FourChanThread : BaseThread
 
     public override async Task checkThreadAsync(DownloadQueue queue)
     {
+        if (queue == null)
+        {
+            Log.Error("DownloadQueue is null in checkThreadAsync.");
+            throw new ArgumentNullException(nameof(queue));
+        }
+
+        if (string.IsNullOrEmpty(ThreadId))
+        {
+            Log.Error("ThreadId is null or empty in checkThreadAsync.");
+            throw new InvalidOperationException("ThreadId cannot be null or empty.");
+        }
+
         Status = "Checking";
         await base.checkThreadAsync(queue);
 
@@ -85,18 +98,22 @@ public class FourChanThread : BaseThread
 
                 string mediaIdentifier = post.Tim.ToString();
 
-                if (IsMediaDownloaded(mediaIdentifier) || queue.IsInQueue($"https://i.4cdn.org/{boardCode}/{post.Tim}{post.Ext}"))
+                lock (_syncLock) // Synchronize HashSet operations
                 {
-                    Log.Debug("Skipping already downloaded or enqueued media {MediaIdentifier} for thread {ThreadId}", mediaIdentifier, ThreadId);
-                    continue;
+                    if (IsMediaDownloaded(mediaIdentifier) || queue.IsInQueue($"https://i.4cdn.org/{boardCode}/{post.Tim}{post.Ext}"))
+                    {
+                        Log.Debug("Skipping already downloaded or enqueued media {MediaIdentifier} for thread {ThreadId}", mediaIdentifier, ThreadId);
+                        continue;
+                    }
                 }
 
                 string imageUrl = $"https://i.4cdn.org/{boardCode}/{post.Tim}{post.Ext}";
-                
+
                 // Use the _config.DownloadPath instead of the local path
                 string destinationPath = Path.Combine(_config.DownloadPath, boardCode, ThreadId, $"{post.Filename}{post.Ext}");
 
                 DownloadItem downloadItem = new DownloadItem(new Uri(imageUrl), destinationPath, Board.ImageBoard, this, mediaIdentifier);
+
                 queue.EnqueueDownload(downloadItem);
                 Log.Debug("Enqueued download for image {ImageUrl}", imageUrl);
             }

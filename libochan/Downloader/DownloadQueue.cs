@@ -18,6 +18,7 @@ public class DownloadQueue
     private readonly BandwidthLimiter _bandwidthLimiter;
     private readonly CancellationTokenSource _cts;
     private readonly List<Task> _workerTasks;
+    private readonly object _syncLock = new(); // Lock for thread-safe access to _queuedUrls and _downloadingUrls
     private readonly HashSet<string> _queuedUrls;      // Track URLs that are enqueued
     private readonly HashSet<string> _downloadingUrls; // Track URLs that are currently being downloaded
 
@@ -60,7 +61,10 @@ public class DownloadQueue
     /// <returns>True if the URL is already in the queue; otherwise, false.</returns>
     public bool IsInQueue(string url)
     {
-        return _queuedUrls.Contains(url); // Check if the URL exists in the enqueued set
+        lock (_syncLock) // Ensure thread-safe access to _queuedUrls
+        {
+            return _queuedUrls.Contains(url);
+        }
     }
 
     /// <summary>
@@ -70,7 +74,10 @@ public class DownloadQueue
     /// <returns>True if the URL is currently downloading; otherwise, false.</returns>
     public bool IsDownloading(string url)
     {
-        return _downloadingUrls.Contains(url); // Check if the URL exists in the downloading set
+        lock (_syncLock) // Ensure thread-safe access to _downloadingUrls
+        {
+            return _downloadingUrls.Contains(url);
+        }
     }
 
     /// <summary>
@@ -86,11 +93,18 @@ public class DownloadQueue
 
         string url = item.DownloadUri.ToString();
 
-        // Check if the URL is either already in the queue or currently downloading
-        if (IsInQueue(url) || IsDownloading(url))
+        // Lock to prevent concurrent access while checking and modifying the collections
+        lock (_syncLock)
         {
-            Log.Warning("DownloadItem for {DownloadUri} is already in queue or downloading", url);
-            return; // Skip if the item is already enqueued or downloading
+            // Check if the URL is either already in the queue or currently downloading
+            if (IsInQueue(url) || IsDownloading(url))
+            {
+                Log.Warning("DownloadItem for {DownloadUri} is already in queue or downloading", url);
+                return; // Skip if the item is already enqueued or downloading
+            }
+
+            _queuedUrls.Add(url);  // Add to the set of enqueued URLs
+            _downloadingUrls.Add(url); // Also track as currently downloading
         }
 
         var cancellationTokenSource = new CancellationTokenSource();
@@ -101,9 +115,6 @@ public class DownloadQueue
             Log.Information("Thread {ThreadId} removed. Cancelling downloads for this thread.", thread.ThreadId);
             cancellationTokenSource.Cancel(); // Cancel all downloads for this thread
         };
-
-        _queuedUrls.Add(url);
-        _downloadingUrls.Add(url);
 
         _downloadQueue.Enqueue((item, cancellationTokenSource.Token));
         Log.Debug("Enqueued DownloadItem: {DownloadUri}", item.DownloadUri);
@@ -169,10 +180,13 @@ public class DownloadQueue
         }
         finally
         {
-            // Remove the URL from the queue and downloading sets after processing
-            string url = item.DownloadUri.ToString();
-            _queuedUrls.Remove(url);
-            _downloadingUrls.Remove(url);
+            // Lock to prevent concurrent access while modifying the sets
+            lock (_syncLock)
+            {
+                string url = item.DownloadUri.ToString();
+                _queuedUrls.Remove(url);
+                _downloadingUrls.Remove(url);
+            }
 
             _parallelDownloadsSemaphore.Release();
             StartWorkersIfNeeded(); // Check if there are more items to process
