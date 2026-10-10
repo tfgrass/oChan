@@ -541,18 +541,23 @@ public partial class MainWindow : Window
                 row.Dispose();
             }
 
-            // Detach menu subscriptions before flushing queued DBus layout updates.
-            // Avalonia 11 does not cancel those Background callbacks on Dispose.
             _clipboardMenuItem = null;
-            Log.Debug("Shutdown: detaching the tray menu; tray present {TrayPresent}.", _trayIcon != null);
-            if (_trayIcon != null)
+            if (OperatingSystem.IsLinux())
             {
-                _trayIcon.Menu = null;
+                // Only DBus needs its menu subscriptions detached and queued layout updates drained.
+                // Avalonia 11.3.22's macOS exporter rejects Menu=null; other platforms dispose directly.
+                Log.Debug("Shutdown: detaching the DBus tray menu; tray present {TrayPresent}.", _trayIcon != null);
+                if (_trayIcon != null)
+                {
+                    _trayIcon.Menu = null;
+                }
+
+                Log.Debug("Shutdown: DBus tray menu detached; waiting for the background dispatcher.");
+                await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+                Log.Debug("Shutdown: background dispatcher completed.");
             }
 
-            Log.Debug("Shutdown: tray menu detached; waiting for the background dispatcher.");
-            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
-            Log.Debug("Shutdown: background dispatcher completed; disposing the tray icon.");
+            Log.Debug("Shutdown: disposing the tray icon; tray present {TrayPresent}.", _trayIcon != null);
             DisposeTrayIcon();
             Log.Debug("Shutdown: tray disposal returned; releasing the profile lease.");
             _profileLease.Dispose();
