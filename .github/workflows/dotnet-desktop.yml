@@ -47,7 +47,7 @@ jobs:
       - name: Build all production and test projects
         run: dotnet build oChan.sln --configuration Release --no-restore
       - name: Run core and desktop offline tests
-        run: dotnet test oChan.sln --configuration Release --no-build --no-restore --logger trx --results-directory test-results
+        run: dotnet test oChan.sln --configuration Release --no-build --no-restore --logger trx --logger "console;verbosity=normal" --blame-hang --blame-hang-timeout 2min --blame-hang-dump-type mini --results-directory test-results
       - name: Check package layout fixtures
         run: python -m unittest discover -s tests -p test_macos_packaging.py -v
       - name: Restore graphical harness with reviewed dependencies
@@ -70,7 +70,7 @@ jobs:
         with:
           name: validation-${{ matrix.os }}-${{ runner.arch }}
           path: |
-            test-results/**/*.trx
+            test-results/**
             artifacts/desktop-smoke/**
             artifacts/build-evidence/**
           if-no-files-found: warn
