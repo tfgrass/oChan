@@ -1,50 +1,48 @@
-# Downloader System Documentation
+# Download pipeline
 
-The downloader system in oChan consists of several classes that manage downloading media from imageboards. The primary classes involved are:
+Normal consumers admit URLs through `Registry`. Providers discover media descriptors, and the session's shared `DownloadQueue` schedules the work. The queue limits active media globally across watched boards and threads.
 
-- `DownloadQueue`
-- `DownloadWorker`
-- `BandwidthLimiter`
-- `DownloadItem`
+A job is reserved by source, board, thread, media ID and absolute destination. Different destinations are distinct jobs; duplicate descriptors for the same target do not create concurrent writes. A stopped watch cannot enqueue late work into its old lifetime.
 
-## DownloadQueue Class
+## Completion and storage
 
-The `DownloadQueue` manages the queue of download tasks, controlling how many tasks run in parallel and how much bandwidth each task uses.
+The worker first checks whether stored media can be verified and reused. Otherwise it reads the HTTP body with cancellation and a bounded network-idle deadline. The store writes a temporary file, checks expected size/hash when provided, publishes the file atomically, and commits its manifest. Only then is the medium marked complete.
 
-### Properties:
-- **MaxParallelDownloads**: Maximum number of simultaneous downloads.
-- **MaxBandwidthBytesPerSecond**: Maximum bandwidth allocation for downloads.
+A pre-existing filename alone is not proof of completion. A new store verifies saved bytes before reuse. A running store can reuse verification of unchanged file fingerprints for up to ten minutes; an external edit preserving every fingerprint can defer detection until that deadline. Unrelated files are preserved; ambiguous legacy files are not silently adopted. Provider URLs can change without changing the stable media identity. Interrupted transfers are retried as complete downloads; byte-range resume is not implemented.
 
-### Methods:
+A missing medium does not remove its parent thread. The public `ThreadSnapshot` exposes source availability, typed activity/failures and actual queued/active media separately, so a source becoming archived or unavailable does not imply that every known medium was saved.
 
-#### `EnqueueDownload(DownloadItem item)`
-Adds a new `DownloadItem` to the queue for downloading.
+## Queue APIs
 
-- **Parameters**: 
-  - `item`: An instance of `DownloadItem`.
+| API | Meaning |
+| --- | --- |
+| `TryEnqueue(DownloadItem)` | Reserves a job if its lifetime/identity can be admitted. Acceptance is not completion. |
+| `WaitForIdleAsync()` | Waits until currently admitted media work has finished or been cancelled. Source monitoring can later add work. |
+| `CancelDownloadsForThreadAsync(IThread)` | Cancels and awaits media belonging to that watch instance. |
+| `StopAllAsync()` | Cancels and awaits the queue. Use session `StopAsync` to stop source polling as well. |
+| `UpdateMaxParallelDownloads(int)` | Changes the global concurrency limit. |
+| `UpdateMaxBandwidth(long)` | Changes the shared byte budget, in bytes per second. |
+| `GetThreadCounts(threads)` | Returns queued/active counts for the requested watch instances. |
 
-#### `StopAll()`
-Stops all downloads and cancels running tasks.
+The synchronous stop/cancel adapters request cancellation; use the async APIs when completion is required. `DownloadWorker` and `MediaStore` are pipeline components; hosts should share the queue/store ownership rather than construct competing writers for one target.
 
-#### `UpdateMaxParallelDownloads(int newMax)`
-Updates the maximum number of parallel downloads.
+## Custom provider descriptors
 
-#### `UpdateMaxBandwidth(long newMaxBytesPerSecond)`
-Updates the bandwidth limit for downloads.
-
-## BandwidthLimiter Class
-
-The `BandwidthLimiter` ensures that the download speed doesn't exceed the allowed limit.
-
-### Methods:
-
-#### `ThrottleAsync(int bytesDownloaded, CancellationToken cancellationToken)`
-Limits the download speed based on the configured bandwidth limit.
-
-## Example
+A custom provider supplies a `DownloadItem` with its resolved provider and thread objects:
 
 ```csharp
-var downloadQueue = new DownloadQueue(3, 1024 * 1024); // 3 parallel downloads, 1MB/s bandwidth limit
-var downloadItem = new DownloadItem(new Uri("https://i.4cdn.org/g/12345.jpg"), "Downloads/12345.jpg", imageBoard);
-downloadQueue.EnqueueDownload(downloadItem);
+DownloadItem item = new DownloadItem(
+    downloadUri: mediaUri,
+    destinationPath: absoluteDestination,
+    imageBoard: provider,
+    thread: thread,
+    mediaIdentifier: mediaId,
+    expectedSize: expectedSize,
+    expectedMd5: base64Md5,
+    originalFileName: originalName);
+bool admitted = queue.TryEnqueue(item);
 ```
+
+The variables come from the provider's parsed response; the MD5 value is the provider's Base64 encoding, not hexadecimal. Keep source/board/thread/media identifiers stable, validate paths through the storage layout, and propagate cancellation while producing descriptors. Never mark a file complete merely because enqueue returned `true`.
+
+The [session documentation](Registry.md) describes cancellation and persistence ownership. The package consumer sample provides a runnable custom provider.

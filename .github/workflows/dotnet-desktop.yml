@@ -1,37 +1,224 @@
-name: .NET Desktop Build
+# Graphical harness results are source-build evidence, not packaged apphost evidence.
+name: Desktop and library validation
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [main]
+    tags: ["v*"]
   pull_request:
-    branches: [ "main" ]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  build:
+  validate:
     strategy:
+      fail-fast: false
       matrix:
-        runtime: [win-x64, linux-x64, linux-arm64, osx-x64, osx-arm64]
-
-    runs-on: ${{ matrix.runtime == 'win-x64' && 'windows-latest' || startsWith(matrix.runtime, 'osx-') && 'macos-latest' || 'ubuntu-latest' }}
-
+        os: [ubuntu-24.04, windows-2022, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+      - name: Record SDK and source commit
+        shell: bash
+        run: |
+          mkdir -p artifacts/build-evidence
+          dotnet --info | tee artifacts/build-evidence/sdk.txt
+          git rev-parse HEAD > artifacts/build-evidence/source-commit.txt
+      - name: Restore dependencies and require audit availability
+        run: dotnet restore oChan.sln -p:Configuration=Release --locked-mode -warnaserror:NU1900
+      - name: Retain exact restored Release graphs
+        shell: bash
+        run: |
+          cp obj/project.assets.json artifacts/build-evidence/desktop-assets.json
+          cp libochan/obj/project.assets.json artifacts/build-evidence/library-assets.json
+          cp tests/oChan.Tests/obj/project.assets.json artifacts/build-evidence/core-tests-assets.json
+          cp tests/oChan.DesktopTests/obj/project.assets.json artifacts/build-evidence/desktop-tests-assets.json
+      - name: Build all production and test projects
+        run: dotnet build oChan.sln --configuration Release --no-restore
+      - name: Run core and desktop offline tests
+        run: dotnet test oChan.sln --configuration Release --no-build --no-restore --logger trx --logger "console;verbosity=normal" --blame-hang --blame-hang-timeout 2min --blame-hang-dump-type mini --results-directory test-results
+      - name: Check package layout fixtures
+        run: python -m unittest discover -s tests -p test_macos_packaging.py -v
+      - name: Restore graphical harness with reviewed dependencies
+        run: dotnet restore tests/oChan.DesktopSmoke/oChan.DesktopSmoke.csproj -p:Configuration=Release --locked-mode -warnaserror:NU1900
+      - name: Retain exact graphical harness dependency graph
+        shell: bash
+        run: cp tests/oChan.DesktopSmoke/obj/project.assets.json artifacts/build-evidence/desktop-smoke-assets.json
+      - name: Build graphical harness
+        run: dotnet build tests/oChan.DesktopSmoke/oChan.DesktopSmoke.csproj --configuration Release --no-restore
+      - name: Install Linux virtual display and private session bus
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes xvfb dbus-daemon libx11-6 libice6 libsm6 libfontconfig1
+      - name: Exercise native graphical startup and fallback paths
+        run: python scripts/run-desktop-smoke.py --assembly tests/oChan.DesktopSmoke/bin/Release/net10.0/oChan.DesktopSmoke.dll --output artifacts/desktop-smoke
+      - name: Upload regression and graphical evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: validation-${{ matrix.os }}-${{ runner.arch }}
+          path: |
+            test-results/**
+            artifacts/desktop-smoke/**
+            artifacts/build-evidence/**
+          if-no-files-found: warn
+          retention-days: 14
 
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v3
-      with:
-        dotnet-version: '8.0.x'  # Match your project's target framework
+  library-package:
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+      - name: Restore the library dependency graph
+        run: dotnet restore libochan/libochan.csproj -p:Configuration=Release --locked-mode -warnaserror:NU1900
+      - name: Pack the library locally
+        run: dotnet pack libochan/libochan.csproj --configuration Release --no-restore --output artifacts/packages
+      - name: Consume the actual local package in a fresh cache
+        run: python scripts/test-local-package.py --feed artifacts/packages --consumer samples/LibOChan.Consumer/LibOChan.Consumer.csproj
+      - name: Retain local package candidate
+        uses: actions/upload-artifact@v7
+        with:
+          name: library-package-candidate
+          path: artifacts/packages/*
+          if-no-files-found: error
+          retention-days: 30
 
-    - name: Restore dependencies
-      run: dotnet restore oChan.sln  # Reference your oChan solution file
-
-    - name: Publish self-contained single-file executable
-      run: |
-        dotnet publish oChan.sln --configuration Release --output publish-output/${{ matrix.runtime }} -p:PublishSingleFile=true -p:SelfContained=true -r ${{ matrix.runtime }}
-    - name: Upload build artifacts
-      uses: actions/upload-artifact@v3
-      with:
-        name: oChan-${{ matrix.runtime }}
-        path: publish-output/${{ matrix.runtime }}/
-        retention-days: 30
+  package:
+    needs: [validate, library-package]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runtime: win-x64
+            os: windows-2022
+          - runtime: linux-x64
+            os: ubuntu-24.04
+          - runtime: linux-arm64
+            os: ubuntu-24.04
+          - runtime: osx-x64
+            os: macos-15
+          - runtime: osx-arm64
+            os: macos-15
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+      - name: Record SDK and source commit
+        shell: bash
+        run: |
+          mkdir -p artifacts/build-evidence
+          dotnet --info | tee artifacts/build-evidence/sdk.txt
+          git rev-parse HEAD > artifacts/build-evidence/source-commit.txt
+      - name: Read product version
+        id: metadata
+        shell: bash
+        run: |
+          package_version="$(dotnet msbuild oChan.csproj -nologo -getProperty:Version)"
+          echo "version=$package_version" >> "$GITHUB_OUTPUT"
+          if [[ "$GITHUB_REF" == refs/tags/* && "$GITHUB_REF_NAME" != "v$package_version" ]]; then
+            echo "Tag $GITHUB_REF_NAME does not match project version $package_version."
+            exit 1
+          fi
+      - name: Restore selected runtime
+        run: dotnet restore oChan.csproj -p:RuntimeIdentifier=${{ matrix.runtime }} -p:Configuration=Release --locked-mode -p:SelfContained=true -p:PublishSingleFile=true -warnaserror:NU1900
+      - name: Publish self-contained application
+        run: dotnet publish oChan.csproj --configuration Release --runtime ${{ matrix.runtime }} --self-contained true --no-restore -p:PublishSingleFile=true --output publish-output/${{ matrix.runtime }}
+      - name: Retain resolved publish dependency and runtime packs
+        shell: bash
+        run: |
+          cp obj/project.assets.json artifacts/build-evidence/publish-assets.json
+          cp libochan/obj/project.assets.json artifacts/build-evidence/library-assets.json
+      - name: Package and re-extract Windows output
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force packages, extracted | Out-Null
+          $archive = "packages/oChan-${{ steps.metadata.outputs.version }}-${{ matrix.runtime }}.zip"
+          Compress-Archive -Path "publish-output/${{ matrix.runtime }}/*" -DestinationPath $archive
+          Expand-Archive -Path $archive -DestinationPath extracted
+          foreach ($name in @('oChan.exe', 'LICENSE', 'README.md', 'CHANGELOG.md', 'THIRD-PARTY-NOTICES.md', 'docs/platform-support.md', 'docs/Registry.md', 'docs/Downloader.md', 'samples/LibOChan.Consumer/README.md')) {
+            if (-not (Test-Path -LiteralPath "extracted/$name" -PathType Leaf)) { throw "Archive is missing $name" }
+          }
+          $hash = (Get-FileHash -Algorithm SHA256 $archive).Hash.ToLowerInvariant()
+          "$hash  $(Split-Path -Leaf $archive)" | Set-Content -LiteralPath "$archive.sha256" -Encoding utf8
+      - name: Package and re-extract Unix output with executable permissions
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          mkdir -p packages extracted
+          archive="packages/oChan-${{ steps.metadata.outputs.version }}-${{ matrix.runtime }}.tar.gz"
+          tar -czf "$archive" -C "publish-output/${{ matrix.runtime }}" .
+          tar -xzf "$archive" -C extracted
+          test -x extracted/oChan
+          test -f extracted/LICENSE
+          test -f extracted/README.md
+          test -f extracted/CHANGELOG.md
+          test -f extracted/THIRD-PARTY-NOTICES.md
+          test -f extracted/docs/platform-support.md
+          test -f extracted/docs/Registry.md
+          test -f extracted/docs/Downloader.md
+          test -f extracted/samples/LibOChan.Consumer/README.md
+          (cd packages && shasum -a 256 "$(basename "$archive")") > "$archive.sha256"
+          file extracted/oChan
+      - name: Package unsigned macOS app bundle
+        if: runner.os == 'macOS'
+        run: python scripts/package-macos.py --publish-dir publish-output/${{ matrix.runtime }} --output-dir bundle-output --version ${{ steps.metadata.outputs.version }} --archive packages/oChan-${{ steps.metadata.outputs.version }}-${{ matrix.runtime }}.tar.gz
+      - name: Validate extracted macOS bundle
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          mkdir -p extracted
+          archive="packages/oChan-${{ steps.metadata.outputs.version }}-${{ matrix.runtime }}.tar.gz"
+          tar -xzf "$archive" -C extracted
+          plutil -lint extracted/oChan.app/Contents/Info.plist
+          test -x extracted/oChan.app/Contents/MacOS/oChan
+          test -f extracted/oChan.app/Contents/Resources/ochan.icns
+          test -f extracted/oChan.app/Contents/MacOS/LICENSE
+          test -f extracted/oChan.app/Contents/MacOS/README.md
+          test -f extracted/oChan.app/Contents/MacOS/CHANGELOG.md
+          test -f extracted/oChan.app/Contents/MacOS/THIRD-PARTY-NOTICES.md
+          test -f extracted/oChan.app/Contents/MacOS/docs/platform-support.md
+          test -f extracted/oChan.app/Contents/MacOS/docs/Registry.md
+          test -f extracted/oChan.app/Contents/MacOS/docs/Downloader.md
+          test -f extracted/oChan.app/Contents/MacOS/samples/LibOChan.Consumer/README.md
+          (cd packages && shasum -a 256 "$(basename "$archive")") > "$archive.sha256"
+          file extracted/oChan.app/Contents/MacOS/oChan
+      - name: Document package-check boundary
+        shell: bash
+        run: |
+          echo "Prepared ${{ matrix.runtime }} archive from $GITHUB_SHA on $RUNNER_OS/$RUNNER_ARCH." >> "$GITHUB_STEP_SUMMARY"
+          echo "Archive contents/permissions were checked. This job does not execute the extracted oChan apphost. Native release acceptance remains separately recorded." >> "$GITHUB_STEP_SUMMARY"
+      - name: Retain package candidate
+        uses: actions/upload-artifact@v7
+        with:
+          name: package-${{ matrix.runtime }}
+          path: packages/*
+          if-no-files-found: error
+          retention-days: 30
+      - name: Retain publish evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: publish-evidence-${{ matrix.runtime }}
+          path: artifacts/build-evidence/**
+          if-no-files-found: warn
+          retention-days: 30

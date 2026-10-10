@@ -5,88 +5,161 @@ using System.Threading;
 using System.Threading.Tasks;
 using Serilog;
 
+/// <summary>
+/// Shares a byte budget across transfers. There is no accumulated idle credit:
+/// each chunk waits for its complete budget before it is released to the caller.
+/// </summary>
 public class BandwidthLimiter
 {
-    private readonly SemaphoreSlim _semaphore = new SemaphoreSlim(1, 1);
+    // Task.Delay's default timer supports at most this interval. Longer debts are
+    // paid in several waits rather than overflowing a duration or timer argument.
+    private static readonly TimeSpan MaximumDelay = TimeSpan.FromMilliseconds(uint.MaxValue - 1L);
+    private readonly SemaphoreSlim _turn = new SemaphoreSlim(1, 1);
+    private readonly object _budgetLock = new object();
+    private readonly TimeProvider _timeProvider;
+    private readonly ILogger _logger;
+    private TaskCompletionSource _budgetChanged = CreateCompletionSource();
     private long _maxBytesPerSecond;
-    private long _bytesDownloadedThisSecond;
-    private DateTime _currentSecondStart;
+    private long _accountedAt;
+    private decimal _outstandingBytes;
 
-    private readonly Config _config; // Reference to the config
+    public long MaxBytesPerSecond => Interlocked.Read(ref _maxBytesPerSecond);
 
-    public BandwidthLimiter()
+    public BandwidthLimiter(long maxBytesPerSecond, TimeProvider? timeProvider = null, ILogger? logger = null)
     {
-        _config = Config.LoadConfig(); // Load the configuration
-
-        if (_config.BandwidthLimiter <= 0)
+        if (maxBytesPerSecond <= 0)
         {
-            Log.Error("Attempted to initialize BandwidthLimiter with non-positive maxBytesPerSecond from config: {MaxBytesPerSecond}", _config.BandwidthLimiter);
-            throw new ArgumentException("Max bytes per second from configuration must be greater than zero.");
+            throw new ArgumentOutOfRangeException(nameof(maxBytesPerSecond), "Max bytes per second must be greater than zero.");
         }
 
-        _maxBytesPerSecond = _config.BandwidthLimiter;
-        _currentSecondStart = DateTime.UtcNow;
-
-        Log.Information("Initialized BandwidthLimiter with maxBytesPerSecond from config: {MaxBytesPerSecond} ({HumanReadableMaxBytesPerSecond})", 
-            _maxBytesPerSecond, Utils.ToHumanReadableSize(_maxBytesPerSecond));
+        _maxBytesPerSecond = maxBytesPerSecond;
+        _timeProvider = timeProvider ?? TimeProvider.System;
+        _logger = logger ?? Serilog.Core.Logger.None;
+        _accountedAt = _timeProvider.GetTimestamp();
     }
 
     public void UpdateMaxBytesPerSecond(long newMax)
     {
         if (newMax <= 0)
         {
-            Log.Error("Attempted to update maxBytesPerSecond to non-positive value: {NewMax}", newMax);
-            throw new ArgumentException("Max bytes per second must be greater than zero.");
+            throw new ArgumentOutOfRangeException(nameof(newMax), "Max bytes per second must be greater than zero.");
         }
 
-        Log.Information("Updating maxBytesPerSecond from {OldMax} ({HumanReadableOldMax}) to {NewMax} ({HumanReadableNewMax})",
-            _maxBytesPerSecond, Utils.ToHumanReadableSize(_maxBytesPerSecond), newMax, Utils.ToHumanReadableSize(newMax));
-        _maxBytesPerSecond = newMax;
+        TaskCompletionSource changed;
+        long previousMax;
+        lock (_budgetLock)
+        {
+            AccountElapsedBudgetLocked();
+            previousMax = Interlocked.Exchange(ref _maxBytesPerSecond, newMax);
+            changed = _budgetChanged;
+            _budgetChanged = CreateCompletionSource();
+        }
+
+        changed.TrySetResult();
+        _logger.Debug("Updated bandwidth from {OldMax} to {NewMax} bytes per second", previousMax, newMax);
     }
 
     public async Task ThrottleAsync(int bytesDownloaded, CancellationToken cancellationToken)
     {
-        Log.Verbose("ThrottleAsync called with bytesDownloaded: {BytesDownloaded} ({HumanReadableBytesDownloaded})", bytesDownloaded, Utils.ToHumanReadableSize(bytesDownloaded));
+        if (bytesDownloaded < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(bytesDownloaded));
+        }
 
-        await _semaphore.WaitAsync(cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (bytesDownloaded == 0)
+        {
+            return;
+        }
+
+        await _turn.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            DateTime now = DateTime.UtcNow;
-
-            if ((now - _currentSecondStart).TotalSeconds >= 1)
+            cancellationToken.ThrowIfCancellationRequested();
+            lock (_budgetLock)
             {
-                Log.Debug("One second has passed. Resetting counters.");
-                // Reset the counter every second
-                _currentSecondStart = now;
-                _bytesDownloadedThisSecond = 0;
+                AccountElapsedBudgetLocked();
+                _outstandingBytes += bytesDownloaded;
             }
 
-            _bytesDownloadedThisSecond += bytesDownloaded;
-            Log.Verbose("Updated bytesDownloadedThisSecond: {BytesDownloadedThisSecond} ({HumanReadableBytesDownloadedThisSecond})",
-                _bytesDownloadedThisSecond, Utils.ToHumanReadableSize(_bytesDownloadedThisSecond));
-
-            if (_bytesDownloadedThisSecond > _maxBytesPerSecond)
+            while (true)
             {
-                // Calculate delay
-                int delay = (int)(1000 - (now - _currentSecondStart).TotalMilliseconds);
-                if (delay > 0)
+                cancellationToken.ThrowIfCancellationRequested();
+                TimeSpan delay;
+                Task changed;
+                lock (_budgetLock)
                 {
-                    Log.Debug("Throttling download. Sleeping for {Delay} milliseconds.", delay);
-                    await Task.Delay(delay, cancellationToken);
+                    AccountElapsedBudgetLocked();
+                    if (_outstandingBytes == 0)
+                    {
+                        return;
+                    }
+
+                    delay = GetDelayLocked();
+                    changed = _budgetChanged.Task;
                 }
-                else
+
+                using CancellationTokenSource waitCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                Task elapsed = Task.Delay(delay, _timeProvider, waitCancellation.Token);
+                Task completed = await Task.WhenAny(elapsed, changed).ConfigureAwait(false);
+                // Cancel the obsolete timer on a settings change, so repeated
+                // updates cannot leave an increasing number of scheduled waits.
+                await waitCancellation.CancelAsync().ConfigureAwait(false);
+                cancellationToken.ThrowIfCancellationRequested();
+                if (ReferenceEquals(completed, elapsed))
                 {
-                    Log.Verbose("No delay required. Continuing without delay.");
+                    await elapsed.ConfigureAwait(false);
                 }
-                // Reset counters after delay
-                _currentSecondStart = DateTime.UtcNow;
-                _bytesDownloadedThisSecond = 0;
             }
         }
         finally
         {
-            _semaphore.Release();
-            Log.Verbose("Semaphore released in ThrottleAsync.");
+            // Bytes are already read by the caller. Cancelling its wait therefore
+            // leaves unpaid debt for the following transfer instead of resetting it.
+            _turn.Release();
         }
+    }
+
+    private void AccountElapsedBudgetLocked()
+    {
+        long now = _timeProvider.GetTimestamp();
+        TimeSpan elapsed = _timeProvider.GetElapsedTime(_accountedAt, now);
+        _accountedAt = now;
+        if (_outstandingBytes == 0 || elapsed <= TimeSpan.Zero)
+        {
+            return;
+        }
+
+        decimal seconds = (decimal)elapsed.Ticks / TimeSpan.TicksPerSecond;
+        // Compare before multiplying, including at long.MaxValue rates and after
+        // long idle periods, to keep the accounting arithmetic within its range.
+        if (seconds >= _outstandingBytes / _maxBytesPerSecond)
+        {
+            _outstandingBytes = 0;
+        }
+        else
+        {
+            _outstandingBytes -= seconds * _maxBytesPerSecond;
+        }
+    }
+
+    private TimeSpan GetDelayLocked()
+    {
+        decimal seconds = _outstandingBytes / _maxBytesPerSecond;
+        decimal maximumSeconds = (decimal)MaximumDelay.Ticks / TimeSpan.TicksPerSecond;
+        if (seconds >= maximumSeconds)
+        {
+            return MaximumDelay;
+        }
+
+        long ticks = (long)decimal.Ceiling(seconds * TimeSpan.TicksPerSecond);
+        // System timers have millisecond granularity. A sub-millisecond debt must
+        // not turn into a zero-duration Task.Delay and a busy loop.
+        return TimeSpan.FromTicks(Math.Max(TimeSpan.TicksPerMillisecond, ticks));
+    }
+
+    private static TaskCompletionSource CreateCompletionSource()
+    {
+        return new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
     }
 }

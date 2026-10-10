@@ -1,74 +1,64 @@
-// File Path: ./Boards/EightKun/EightKunImageBoard.cs
-
 using System;
 using System.Net.Http;
 using System.Text.RegularExpressions;
 using oChan.Boards.Base;
 using oChan.Interfaces;
+using oChan.Http;
 using Serilog;
 
-namespace oChan.Boards.EightKun
+namespace oChan.Boards.EightKun;
+
+public class EightKunImageBoard : BaseImageBoard
 {
-    public class EightKunImageBoard : BaseImageBoard
+    private static readonly Uri CanonicalBaseUri = new("https://8kun.top/");
+    private static readonly Regex BoardPattern = new(@"^/(?<board>[a-zA-Z0-9_]+)(?:/(?:catalog(?:\.html)?|index\.html))?/?$", RegexOptions.CultureInvariant);
+    private static readonly Regex ThreadPattern = new(@"^/(?<board>[a-zA-Z0-9_]+)/res/(?<id>[0-9]+)\.html/?$", RegexOptions.CultureInvariant);
+
+    /// <summary>
+    /// Uses shared rate and retry controls by default. An injected client is borrowed unchanged;
+    /// its owner must provide compliant rate limits, header deadlines and redirect handling.
+    /// ProviderHttpClientFactory.CreatePolicyClient can wrap an injected transport with that policy.
+    /// </summary>
+    public EightKunImageBoard(HttpClient? client = null, JsonResponseReader? jsonReader = null, ILogger? logger = null) : base(client, jsonReader, logger) { }
+
+    public override string Name => "8kun";
+    public override string NiceName => "8kun";
+    public override Uri BaseUri => CanonicalBaseUri;
+
+    public override bool CanHandle(Uri uri) => IsSupportedUri(uri);
+    public override bool IsBoardUri(Uri uri) => CanHandle(uri) && BoardPattern.IsMatch(uri.AbsolutePath);
+    public override bool IsThreadUri(Uri uri) => CanHandle(uri) && ThreadPattern.IsMatch(uri.AbsolutePath);
+
+    public override IBoard GetBoard(Uri boardUri)
     {
-        public override string Name => "8kun";
-        public override string NiceName => "8kun";
-        public override Uri BaseUri => new Uri("https://8kun.top");
-
-        public override bool CanHandle(Uri uri)
-        {
-            bool canHandle = uri.Host.Contains(BaseUri.Host);
-            Log.Debug("EightKunImageBoard CanHandle({Uri}) returned {Result}", uri, canHandle);
-            return canHandle;
-        }
-
-        public override bool IsThreadUri(Uri uri)
-        {
-            return Regex.IsMatch(uri.AbsolutePath, @"^/\w+/res/\d+\.html");
-        }
-
-        public override bool IsBoardUri(Uri uri)
-        {
-            return Regex.IsMatch(uri.AbsolutePath, @"^/\w+/?$");
-        }
-
-        public override IBoard GetBoard(Uri boardUri)
-        {
-            if (boardUri == null)
-            {
-                Log.Error("Board URI is null.");
-                throw new ArgumentNullException(nameof(boardUri));
-            }
-
-            Log.Information("Creating EightKunBoard for URI: {BoardUri}", boardUri);
-            return new EightKunBoard(this, boardUri);
-        }
-
-        public override IThread GetThread(Uri threadUri)
-        {
-            if (threadUri == null)
-            {
-                Log.Error("Thread URI is null.");
-                throw new ArgumentNullException(nameof(threadUri));
-            }
-
-            Log.Information("Creating EightKunThread for URI: {ThreadUri}", threadUri);
-
-            string boardPath = threadUri.AbsolutePath.Split("/res")[0];
-            Uri boardUri = new Uri($"https://8kun.top{boardPath}");
-            EightKunBoard board = (EightKunBoard)GetBoard(boardUri);
-
-            return new EightKunThread(board, threadUri);
-        }
-
-        public override HttpClient GetHttpClient()
-        {
-            HttpClient client = base.GetHttpClient();
-            client.DefaultRequestHeaders.UserAgent.ParseAdd(
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
-                "(KHTML, like Gecko) Chrome/85.0.4183.121 Safari/537.36");
-            Log.Debug("Configured HttpClient for EightKunImageBoard.");
-            return client;
-        }
+        Uri canonicalUri = CanonicalizeBoardUri(boardUri);
+        return new EightKunBoard(this, canonicalUri);
     }
+
+    public override IThread GetThread(Uri threadUri)
+    {
+        Uri canonicalUri = CanonicalizeThreadUri(threadUri);
+        string boardCode = ThreadPattern.Match(canonicalUri.AbsolutePath).Groups["board"].Value;
+        return new EightKunThread(GetBoard(new Uri(CanonicalBaseUri, boardCode + "/")), canonicalUri);
+    }
+
+    internal static Uri CanonicalizeBoardUri(Uri uri)
+    {
+        ArgumentNullException.ThrowIfNull(uri);
+        Match match = IsSupportedUri(uri) ? BoardPattern.Match(uri.AbsolutePath) : Match.Empty;
+        if (!match.Success) throw new ArgumentException("Invalid 8kun board URI.", nameof(uri));
+        return new Uri(CanonicalBaseUri, match.Groups["board"].Value.ToLowerInvariant() + "/");
+    }
+
+    internal static Uri CanonicalizeThreadUri(Uri uri)
+    {
+        ArgumentNullException.ThrowIfNull(uri);
+        Match match = IsSupportedUri(uri) ? ThreadPattern.Match(uri.AbsolutePath) : Match.Empty;
+        if (!match.Success) throw new ArgumentException("Invalid 8kun thread URI.", nameof(uri));
+        return new Uri(CanonicalBaseUri,
+            $"{match.Groups["board"].Value.ToLowerInvariant()}/res/{match.Groups["id"].Value}.html");
+    }
+
+    private static bool IsSupportedUri(Uri? uri) => IsWebUri(uri) &&
+        string.Equals(uri!.Host, "8kun.top", StringComparison.OrdinalIgnoreCase);
 }

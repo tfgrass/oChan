@@ -2,9 +2,9 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="oChan.MainWindow"
         xmlns:local="clr-namespace:oChan"
-        xmlns:interfaces="clr-namespace:oChan.Interfaces"
+        xmlns:desktop="clr-namespace:oChan.Desktop"
         x:DataType="local:MainWindow"
-        Width="800" Height="600"
+        Width="1100" Height="600" MinWidth="800"
         Title="oChan"
         Icon="avares://oChan/Assets/ochan.png">
     <DockPanel>
@@ -12,6 +12,7 @@
         <Menu DockPanel.Dock="Top">
             <MenuItem x:Name="SettingsMenuItem" Header="_Settings" />
             <MenuItem x:Name="AboutMenuItem" Header="_About" />
+            <MenuItem x:Name="ExitMenuItem" Header="E_xit" />
         </Menu>
 
         <!-- Main Content -->
@@ -47,58 +48,71 @@
                               GridLinesVisibility="All"
                               IsReadOnly="True"
                               SelectionMode="Single"
-                              PointerPressed="OnThreadPointerPressed" 
                               DoubleTapped="OnThreadDoubleTapped"
                               CanUserResizeColumns="True">
                         <DataGrid.Columns>
-                            <DataGridTemplateColumn Header="Host" Width="100">
+                            <DataGridTemplateColumn Header="Host" Width="80" SortMemberPath="HostName">
                                 <DataGridTemplateColumn.CellTemplate>
-                                    <DataTemplate x:DataType="interfaces:IThread">
-                                        <TextBlock Text="{Binding Board.ImageBoard.NiceName}" />
+                                    <DataTemplate x:DataType="desktop:ThreadRow">
+                                        <TextBlock Text="{Binding HostName}" />
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>
 
-                            <DataGridTemplateColumn Header="Board" Width="100">
+                            <DataGridTemplateColumn Header="Board" Width="100" SortMemberPath="BoardName">
                                 <DataGridTemplateColumn.CellTemplate>
-                                    <DataTemplate x:DataType="interfaces:IThread">
-                                        <TextBlock Text="{Binding Board.NiceName}" />
+                                    <DataTemplate x:DataType="desktop:ThreadRow">
+                                        <TextBlock Text="{Binding BoardName}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding BoardName}" />
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>
 
                             <!-- Thread ID Column -->
-                            <DataGridTemplateColumn Header="Thread ID">
+                            <DataGridTemplateColumn Header="Thread ID" Width="90" SortMemberPath="ThreadNumber">
                                 <DataGridTemplateColumn.CellTemplate>
-                                    <DataTemplate x:DataType="interfaces:IThread">
+                                    <DataTemplate x:DataType="desktop:ThreadRow">
                                         <TextBlock Text="{Binding ThreadId}" />
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>
 
                             <!-- Title Column -->
-                            <DataGridTemplateColumn Header="Title">
+                            <DataGridTemplateColumn Header="Title" Width="*" MinWidth="120" SortMemberPath="Title">
                                 <DataGridTemplateColumn.CellTemplate>
-                                    <DataTemplate x:DataType="interfaces:IThread">
-                                        <TextBlock Text="{Binding Title}" />
+                                    <DataTemplate x:DataType="desktop:ThreadRow">
+                                        <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Title}" />
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>
 
                             <!-- Status Column -->
-                            <DataGridTemplateColumn Header="Status">
+                            <DataGridTemplateColumn Header="Status" Width="250" SortMemberPath="Status">
                                 <DataGridTemplateColumn.CellTemplate>
-                                    <DataTemplate x:DataType="interfaces:IThread">
-                                        <TextBlock Text="{Binding Status}" />
+                                    <DataTemplate x:DataType="desktop:ThreadRow">
+                                        <TextBlock Text="{Binding Status}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding StatusDetails}" />
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>
 
                             <!-- Progress Column -->
-                            <DataGridTemplateColumn Header="Progress">
+                            <DataGridTemplateColumn Header="Progress" Width="140" SortMemberPath="Completion">
                                 <DataGridTemplateColumn.CellTemplate>
-                                    <DataTemplate x:DataType="interfaces:IThread">
+                                    <DataTemplate x:DataType="desktop:ThreadRow">
                                         <TextBlock Text="{Binding Progress}" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTemplateColumn Header="Queued" Width="85" SortMemberPath="Queued">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate x:DataType="desktop:ThreadRow">
+                                        <TextBlock Text="{Binding Queued}" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTemplateColumn Header="Active" Width="80" SortMemberPath="Active">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate x:DataType="desktop:ThreadRow">
+                                        <TextBlock Text="{Binding Active}" />
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>
@@ -136,22 +150,28 @@
                               GridLinesVisibility="All"
                               CanUserSortColumns="True"
                               HeadersVisibility="All"
-                              PointerPressed="OnBoardPointerPressed" 
                               DoubleTapped="OnBoardDoubleTapped"
                               CanUserResizeColumns="True">
                         <DataGrid.Columns>
                             <!-- Board URL Column -->
-                            <DataGridTemplateColumn Header="Host" Width="100">
+                            <DataGridTemplateColumn Header="Host" Width="100" SortMemberPath="HostName">
                                 <DataGridTemplateColumn.CellTemplate>
-                                    <DataTemplate x:DataType="interfaces:IBoard">
-                                        <TextBlock Text="{Binding ImageBoard.NiceName}" />
+                                    <DataTemplate x:DataType="desktop:BoardRow">
+                                        <TextBlock Text="{Binding HostName}" />
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
-                            </DataGridTemplateColumn>                            
-                            <DataGridTemplateColumn Header="Board" Width="200">
+                            </DataGridTemplateColumn>
+                            <DataGridTemplateColumn Header="Board" Width="200" SortMemberPath="NiceName">
                                 <DataGridTemplateColumn.CellTemplate>
-                                    <DataTemplate x:DataType="interfaces:IBoard">
+                                    <DataTemplate x:DataType="desktop:BoardRow">
                                         <TextBlock Text="{Binding NiceName}" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTemplateColumn Header="Status" Width="*" SortMemberPath="Status">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate x:DataType="desktop:BoardRow">
+                                        <TextBlock Text="{Binding Status}" ToolTip.Tip="{Binding ErrorDetails}" />
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>
