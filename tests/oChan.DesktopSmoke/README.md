@@ -10,6 +10,14 @@ DISPLAY=:1 timeout 30s dotnet run --project tests/oChan.DesktopSmoke/oChan.Deskt
 DISPLAY=:1 timeout 30s dotnet run --project tests/oChan.DesktopSmoke/oChan.DesktopSmoke.csproj -c Release --no-build -- --tray-failure
 ```
 
+For the Linux CI environment, install `xvfb` and `dbus-daemon`, then run all four modes with retained logs, screenshots and exit codes:
+
+```sh
+python scripts/run-desktop-smoke.py --assembly tests/oChan.DesktopSmoke/bin/Release/net10.0/oChan.DesktopSmoke.dll --output artifacts/desktop-smoke
+```
+
+The runner creates a private `dbus-run-session` and an Xvfb server for each Linux process. It sets the harness-only `OCHAN_DESKTOP_SMOKE_XVFB=1` environment option, which selects X11 software rendering before Avalonia initializes and installs the tray fixture because Xvfb provides no StatusNotifierWatcher. Normal mode still exercises all normal GUI checks; `--tray-failure` still simulates a tray creation exception. This environment is recorded in the logs and `results.json`. It does not validate GPU rendering or a native tray host. Direct desktop runs retain normal renderer and tray setup; Windows/macOS are unchanged. Avalonia errors and binding warnings continue to fail every run.
+
 The harness creates and removes its own temporary `OCHAN_PROFILE`, including an isolated download path. It does not load the user's session. No production test hooks are required.
 
 It starts the real application, waits for session restoration, renders local thread and board rows, and verifies the final title after a burst of 1,000 worker-thread updates. It also checks request admission/cooldown display, typed queued/active counts, retained check errors, terminal source state, board request progress, and disposal of row subscriptions. Normal `MainWindow.Close()` must finish, after which the harness reacquires the profile lease to verify shutdown released it. Fixture providers reject HTTP requests. Avalonia binding warnings and errors fail the smoke run.

@@ -43,6 +43,8 @@ internal static class Program
         _lockedProfileMode = args.Contains("--locked-profile", StringComparer.Ordinal);
         _noTrayMode = args.Contains("--no-tray", StringComparer.Ordinal);
         _trayFailureMode = args.Contains("--tray-failure", StringComparer.Ordinal);
+        bool xvfbEnvironment = OperatingSystem.IsLinux()
+            && Environment.GetEnvironmentVariable("OCHAN_DESKTOP_SMOKE_XVFB") == "1";
         SmokeLogSink sink = new SmokeLogSink();
         try
         {
@@ -56,14 +58,23 @@ internal static class Program
             using ProfileLease? conflictingLease = _lockedProfileMode ? ProfileLease.Acquire(profile) : null;
             Logger.Sink = sink;
             Console.WriteLine("SMOKE isolated profile: " + profile);
-            int exitCode = AppBuilder.Configure<App>()
+            AppBuilder appBuilder = AppBuilder.Configure<App>()
                 .UsePlatformDetect()
-                .WithInterFont()
+                .WithInterFont();
+            if (xvfbEnvironment)
+            {
+                Console.WriteLine("SMOKE Xvfb environment: X11 software rendering; no native tray host (tray fixture installed).");
+                appBuilder.With(new X11PlatformOptions
+                {
+                    RenderingMode = new X11RenderingMode[] { X11RenderingMode.Software }
+                });
+            }
+            int exitCode = appBuilder
                 .AfterPlatformServicesSetup(builder =>
                 {
                     if (!_lockedProfileMode)
                         ClipboardChecks.Install();
-                    if (_noTrayMode || _trayFailureMode)
+                    if (xvfbEnvironment || _noTrayMode || _trayFailureMode)
                     {
                         IWindowingPlatform platform = AvaloniaLocator.Current.GetRequiredService<IWindowingPlatform>();
                         AvaloniaLocator.CurrentMutable.Bind<IWindowingPlatform>()

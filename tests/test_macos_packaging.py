@@ -43,7 +43,8 @@ class MacosPackagingTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory(prefix="ochan packaging fixtures ")
         self.addCleanup(self.temporary.cleanup)
-        self.root = Path(self.temporary.name)
+        # macOS may return /var while packaging resolves the same tree to /private/var.
+        self.root = Path(self.temporary.name).resolve(strict=True)
         self.publish = self.root / "publish input"
         self.publish.mkdir()
         (self.publish / "oChan").write_bytes(b"fixture executable; not runnable")

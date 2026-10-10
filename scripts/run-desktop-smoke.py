@@ -2,8 +2,9 @@
 """Run the source-built Avalonia harness, retaining precise per-mode evidence.
 
 This does not execute the published oChan apphost and is not an artifact smoke.
-Linux uses Xvfb with no tray service. Native Windows/macOS require a GUI session;
-a missing graphical session fails the check, so it cannot silently count as pass.
+Linux uses a private DBus session and Xvfb with software rendering and an explicit
+no-tray fixture. Native Windows/macOS require a GUI session; a missing graphical
+session fails the check, so it cannot silently count as pass.
 """
 from __future__ import annotations
 
@@ -27,8 +28,13 @@ def main() -> int:
     assembly = Path(args.assembly).resolve(strict=True)
     output = Path(args.output).resolve()
     output.mkdir(parents=True, exist_ok=True)
-    if sys.platform.startswith("linux") and shutil.which("xvfb-run") is None:
-        raise RuntimeError("xvfb-run is required for the Linux graphical smoke.")
+    linux_xvfb = sys.platform.startswith("linux")
+    environment = os.environ.copy()
+    if linux_xvfb:
+        for executable in ("xvfb-run", "dbus-run-session"):
+            if shutil.which(executable) is None:
+                raise RuntimeError(f"{executable} is required for the Linux graphical smoke.")
+        environment["OCHAN_DESKTOP_SMOKE_XVFB"] = "1"
     modes = ("normal", "locked-profile", "no-tray", "tray-failure")
     results: list[dict[str, object]] = []
     failed = False
@@ -38,13 +44,14 @@ def main() -> int:
         command = ["dotnet", str(assembly)]
         if mode != "normal":
             command.append("--" + mode)
-        if sys.platform.startswith("linux"):
-            command = ["xvfb-run", "--auto-servernum", "--server-args=-screen 0 1280x1024x24", *command]
+        if linux_xvfb:
+            command = ["dbus-run-session", "--", "xvfb-run", "--auto-servernum",
+                       "--server-args=-screen 0 1280x1024x24", *command]
         previous = {image: image.stat().st_mtime_ns for image in assembly.parent.glob("smoke-*.png")}
         timed_out = False
         with tempfile.TemporaryDirectory(prefix="ochan-smoke-cwd-") as working_directory:
             with (destination / "output.log").open("w", encoding="utf-8") as log:
-                process = subprocess.Popen(command, cwd=working_directory, stdout=log,
+                process = subprocess.Popen(command, cwd=working_directory, env=environment, stdout=log,
                                            stderr=subprocess.STDOUT, start_new_session=os.name != "nt")
                 try:
                     exit_code = process.wait(timeout=args.timeout)
@@ -71,7 +78,10 @@ def main() -> int:
         failed = failed or not passed
     (output / "results.json").write_text(json.dumps({
         "kind": "source-built Avalonia harness; not published apphost",
-        "platform": sys.platform, "results": results
+        "platform": sys.platform,
+        "environment": "Xvfb, private DBus session, software rendering, no native tray host"
+            if linux_xvfb else "native graphical session",
+        "results": results
     }, indent=2) + "\n", encoding="utf-8")
     return 1 if failed else 0
 

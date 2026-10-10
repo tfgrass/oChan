@@ -57,11 +57,11 @@ jobs:
         run: cp tests/oChan.DesktopSmoke/obj/project.assets.json artifacts/build-evidence/desktop-smoke-assets.json
       - name: Build graphical harness
         run: dotnet build tests/oChan.DesktopSmoke/oChan.DesktopSmoke.csproj --configuration Release --no-restore
-      - name: Install Linux virtual display
+      - name: Install Linux virtual display and private session bus
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install --yes xvfb libx11-6 libice6 libsm6 libfontconfig1
+          sudo apt-get install --yes xvfb dbus-daemon libx11-6 libice6 libsm6 libfontconfig1
       - name: Exercise native graphical startup and fallback paths
         run: python scripts/run-desktop-smoke.py --assembly tests/oChan.DesktopSmoke/bin/Release/net10.0/oChan.DesktopSmoke.dll --output artifacts/desktop-smoke
       - name: Upload regression and graphical evidence
