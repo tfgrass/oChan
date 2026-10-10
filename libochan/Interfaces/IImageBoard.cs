@@ -2,6 +2,7 @@
 
 using System;
 using System.Net.Http;
+using Serilog;
 
 namespace oChan.Interfaces
 {
@@ -10,6 +11,9 @@ namespace oChan.Interfaces
         string Name { get; }
         string NiceName { get; }
         Uri BaseUri { get; }
+
+        /// <summary>Caller-owned diagnostic logger; custom providers are silent by default.</summary>
+        ILogger Logger => Serilog.Core.Logger.None;
 
         bool CanHandle(Uri uri);
 

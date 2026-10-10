@@ -2,134 +2,102 @@ namespace oChan.Downloader;
 
 using System;
 using System.IO;
-using System.Net.Http;
 using System.Net;
+using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
+using oChan.Storage;
 using Serilog;
 
-public class DownloadWorker
+/// <summary>Publishes a medium only after its contents and manifest are committed.</summary>
+public sealed class DownloadWorker
 {
-    private readonly DownloadItem _downloadItem;
-    private readonly BandwidthLimiter _bandwidthLimiter;
+    private static readonly MediaStore DefaultStore = new MediaStore();
+    private readonly DownloadItem _item;
+    private readonly BandwidthLimiter _limiter;
+    private readonly MediaStore _store;
+    private readonly TimeSpan _bodyIdleTimeout;
+    private readonly TimeProvider _timeProvider;
+    private readonly ILogger _logger;
 
-    public DownloadWorker(DownloadItem downloadItem, BandwidthLimiter bandwidthLimiter)
+    public DownloadWorker(DownloadItem downloadItem, BandwidthLimiter bandwidthLimiter, MediaStore? store = null,
+        TimeSpan? bodyIdleTimeout = null, TimeProvider? timeProvider = null, ILogger? logger = null)
     {
-        if (downloadItem == null)
-        {
-            Log.Error("DownloadItem is null in DownloadWorker constructor.");
-            throw new ArgumentNullException(nameof(downloadItem));
-        }
-
-        if (bandwidthLimiter == null)
-        {
-            Log.Error("BandwidthLimiter is null in DownloadWorker constructor.");
-            throw new ArgumentNullException(nameof(bandwidthLimiter));
-        }
-
-        _downloadItem = downloadItem;
-        _bandwidthLimiter = bandwidthLimiter;
-
-        Log.Debug("Created DownloadWorker for {DownloadUri}", _downloadItem.DownloadUri);
+        _item = downloadItem ?? throw new ArgumentNullException(nameof(downloadItem));
+        _limiter = bandwidthLimiter ?? throw new ArgumentNullException(nameof(bandwidthLimiter));
+        _store = store ?? DefaultStore;
+        _bodyIdleTimeout = bodyIdleTimeout ?? TimeSpan.FromSeconds(30);
+        IdleTimeoutReadStream.ValidateTimeout(_bodyIdleTimeout, nameof(bodyIdleTimeout));
+        _timeProvider = timeProvider ?? TimeProvider.System;
+        _logger = logger ?? Serilog.Core.Logger.None;
     }
 
     public async Task ExecuteAsync(CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+        MediaCommitResult? restored = await _store.TryRestoreAsync(_item, cancellationToken).ConfigureAwait(false);
+        if (restored != null)
+        {
+            _item.Thread.MarkMediaAsDownloaded(_item.MediaIdentifier, _item.DestinationPath);
+            return;
+        }
+        _item.Thread.MarkMediaPending(_item.MediaIdentifier, _item.DestinationPath);
+
+        HttpClient client = _item.ImageBoard.GetHttpClient();
+        using HttpResponseMessage response = await client.GetAsync(_item.DownloadUri,
+            HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+        // An unavailable media file is a failed media job, never a thread-removal signal.
+        response.EnsureSuccessStatusCode();
+        if (response.StatusCode == HttpStatusCode.PartialContent)
+            throw new InvalidDataException("A partial media response cannot be accepted without range-resume support.");
+        long? contentLength = response.Content.Headers.ContentLength;
+        if (_item.ExpectedSize.HasValue && contentLength.HasValue && _item.ExpectedSize != contentLength)
+            throw new InvalidDataException("HTTP Content-Length conflicts with the provider's expected media size.");
+
+        DownloadItem verifiedItem = _item.ExpectedSize.HasValue || !contentLength.HasValue ? _item : new DownloadItem(
+            _item.DownloadUri, _item.DestinationPath, _item.ImageBoard, _item.Thread, _item.MediaIdentifier,
+            contentLength, _item.ExpectedMd5, _item.OriginalFileName, _item.LegacyPath);
+        await using Stream source = await OpenBodyAsync(response.Content, cancellationToken).ConfigureAwait(false);
+        using IdleTimeoutReadStream timedSource = new IdleTimeoutReadStream(source, _bodyIdleTimeout, _timeProvider);
+        MediaCommitResult completed = await _store.CommitAsync(verifiedItem, timedSource, cancellationToken,
+            _limiter.ThrottleAsync).ConfigureAwait(false);
+        // CommitAsync deliberately finishes its short manifest commit after publishing the file,
+        // even when cancellation arrives then. This is a verified completion, not a partial file.
+        _item.Thread.MarkMediaAsDownloaded(_item.MediaIdentifier, _item.DestinationPath);
+        _logger.Debug("Saved verified media {MediaId} to {Path} ({Length} bytes)",
+            _item.MediaIdentifier, completed.Path, completed.Length);
+    }
+
+    private async Task<Stream> OpenBodyAsync(HttpContent content, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        using CancellationTokenSource deadline = new CancellationTokenSource(_bodyIdleTimeout, _timeProvider);
+        using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token);
+        Task<Stream>? opening = null;
         try
         {
-            // Check if the file already exists in the destination path
-            if (File.Exists(_downloadItem.DestinationPath))
-            {
-                Log.Information("File {DestinationPath} already exists, skipping download.", _downloadItem.DestinationPath);
-                _downloadItem.Thread.MarkMediaAsDownloaded(_downloadItem.MediaIdentifier);
-                return;
-            }
-
-            // Check if the media was already marked as downloaded
-            if (_downloadItem.Thread.IsMediaDownloaded(_downloadItem.MediaIdentifier))
-            {
-                Log.Information("Media {MediaIdentifier} already downloaded for thread {ThreadId}, skipping download.",
-                    _downloadItem.MediaIdentifier, _downloadItem.Thread.ThreadId);
-                return;
-            }
-
-            Log.Debug("Starting execution of DownloadWorker for {DownloadUri}", _downloadItem.DownloadUri);
-
-            HttpClient httpClient = _downloadItem.ImageBoard.GetHttpClient();
-
-            using HttpResponseMessage response = await httpClient.GetAsync(_downloadItem.DownloadUri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-
-            // Handle 404 status code
-            if (response.StatusCode == HttpStatusCode.NotFound)
-            {
-                Log.Warning("Thread {ThreadId} returned 404 (not found), notifying removal.", _downloadItem.Thread.ThreadId);
-                _downloadItem.Thread.NotifyThreadRemoval(false); // Thread removal due to 404, not manual
-                return;
-            }
-
-            // Handle cancellation (check if manual)
-            if (cancellationToken.IsCancellationRequested)
-            {
-                Log.Information("Download for {DownloadUri} was cancelled.", _downloadItem.DownloadUri);
-                _downloadItem.Thread.NotifyThreadRemoval(true); // Manual removal
-                return;
-            }
-
-            response.EnsureSuccessStatusCode();
-
-            string directory = Path.GetDirectoryName(_downloadItem?.DestinationPath) ?? string.Empty;
-            if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
-            {
-                Log.Debug("Creating directory {Directory}", directory);
-                Directory.CreateDirectory(directory);
-            }
-
-            using Stream contentStream = await response.Content.ReadAsStreamAsync(cancellationToken);
-
-            try
-            {
-                using FileStream fileStream = new FileStream(_downloadItem?.DestinationPath ?? throw new ArgumentNullException(nameof(_downloadItem.DestinationPath)),
-                    FileMode.Create, FileAccess.Write, FileShare.None);
-
-                Log.Debug("Beginning file copy to {DestinationPath}", _downloadItem.DestinationPath);
-
-                long totalBytes = await CopyToAsync(contentStream, fileStream, 81920, cancellationToken);
-
-                Log.Information("Successfully downloaded {DownloadUri} to {DestinationPath}. File size: {TotalBytes} bytes ({HumanReadableTotalBytes})",
-                    _downloadItem.DownloadUri, _downloadItem.DestinationPath, totalBytes, Utils.ToHumanReadableSize(totalBytes));
-
-                _downloadItem.Thread.MarkMediaAsDownloaded(_downloadItem.MediaIdentifier);
-            }
-            catch (IOException ioEx)
-            {
-                Log.Warning("File access issue occurred for {FilePath}, exiting downloader.", _downloadItem.DestinationPath);
-                Log.Verbose(ioEx, "File access issue occurred for {FilePath}, exiting downloader.", _downloadItem.DestinationPath);
-                return; // Exit the downloader gracefully
-            }
+            opening = content.ReadAsStreamAsync(linked.Token);
+            return await opening.WaitAsync(deadline.Token).ConfigureAwait(false);
         }
-        catch (Exception ex)
+        catch (OperationCanceledException exception)
         {
-            Log.Error(ex, "Error executing download for {DownloadUri}: {Message}", _downloadItem.DownloadUri, ex.Message);
+            if (opening != null)
+                _ = DisposeLateBodyAsync(opening);
+            cancellationToken.ThrowIfCancellationRequested();
+            if (deadline.IsCancellationRequested)
+                throw new TimeoutException("The media response did not provide its body stream within the idle timeout.", exception);
             throw;
         }
     }
 
-    private async Task<long> CopyToAsync(Stream source, Stream destination, int bufferSize, CancellationToken cancellationToken)
+    private static async Task DisposeLateBodyAsync(Task<Stream> opening)
     {
-        byte[] buffer = new byte[bufferSize];
-        int bytesRead;
-        long totalBytes = 0;
-
-        while ((bytesRead = await source.ReadAsync(buffer.AsMemory(0, bufferSize), cancellationToken)) > 0)
+        // HttpContent implementations may ignore the supplied token. A stream
+        // produced after the bounded wait still needs an owner to dispose it.
+        try
         {
-            await _bandwidthLimiter.ThrottleAsync(bytesRead, cancellationToken);
-            await destination.WriteAsync(buffer.AsMemory(0, bytesRead), cancellationToken);
-
-            totalBytes += bytesRead; // Accumulate total bytes
+            await using Stream stream = await opening.ConfigureAwait(false);
         }
-
-        Log.Debug("Completed file copy. Total bytes copied: {TotalBytes} bytes", totalBytes);
-
-        return totalBytes; // Return total bytes for logging in ExecuteAsync
+        catch (Exception) { }
     }
 }

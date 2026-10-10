@@ -5,254 +5,482 @@ using System.IO;
 using System.ComponentModel;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
-using System.Text.Json;
+using System.Collections.ObjectModel;
+using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using oChan.Downloader;
 using oChan.Interfaces;
+using oChan.Http;
+using oChan.Storage;
+using oChan.Notifications;
 using Serilog;
-using Avalonia.Threading; // Make sure to include this namespace
 
-public abstract class BaseThread : IThread, INotifyPropertyChanged
+/// <summary>
+/// Passive thread state. The session explicitly starts and stops its polling lifetime.
+/// Property notifications are asynchronous, coalesced invalidations. UI clients must dispatch them.
+/// </summary>
+public abstract class BaseThread : IThread
 {
-    // Event that notifies when the thread should be removed
-    public event Action<IThread>? ThreadRemoved;
+    private readonly object _monitoringLock = new object();
+    private readonly object _stateLock = new object();
+    private CancellationTokenSource? _monitoringCancellation;
+    private Task? _monitoringTask;
+    private TimeSpan _monitoringInterval = TimeSpan.FromSeconds(60);
+    private HashSet<string> _downloadedMedia = new HashSet<string>(StringComparer.Ordinal);
+    private static readonly StringComparer DestinationComparer = OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
+    private readonly Dictionary<string, HashSet<string>> _verifiedDestinations = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+    private readonly Dictionary<string, Dictionary<string, FailureInfo>> _destinationFailures = new Dictionary<string, Dictionary<string, FailureInfo>>(StringComparer.Ordinal);
+    private readonly Dictionary<string, string> _mediaFailures = new Dictionary<string, string>(StringComparer.Ordinal);
+    private ThreadSourceState _sourceState = ThreadSourceState.Active;
+    private RequestPolicyProgress? _requestProgress;
+    private string _title = "Unknown";
+    private ThreadActivity _activity = ThreadActivity.Pending;
+    private FailureInfo? _lastCheckFailure;
+    private readonly CoalescedEvent<PropertyChangedEventHandler> _propertyChanges;
+    private readonly SingleOwnerCallback<Action<IThread>> _removal = new SingleOwnerCallback<Action<IThread>>();
+    private int _totalMediaCount;
 
-    private Rechecker? _rechecker;
-    private readonly Config _config; // Reference to the configuration
+    protected BaseThread()
+    {
+        _propertyChanges = new CoalescedEvent<PropertyChangedEventHandler>(
+            handler => handler(this, new PropertyChangedEventArgs(string.Empty)),
+            exception => Logger.Error(exception, "Thread property observer failed for {ThreadId}", ThreadId));
+    }
+
+    protected ILogger Logger => Board.ImageBoard.Logger;
+    public event PropertyChangedEventHandler? PropertyChanged
+    {
+        add => _propertyChanges.Add(value);
+        remove => _propertyChanges.Remove(value);
+    }
+    public IDisposable RegisterRemovalSink(Action<IThread> sink) => _removal.Register(sink);
+    public FailureInfo? LastCheckFailure { get { lock (_stateLock) { return _lastCheckFailure; } } }
+
+    public ThreadSnapshot GetSnapshot(DownloadCounts downloads)
+    {
+        lock (_stateLock)
+        {
+            Dictionary<string, FailureInfo> failures = new Dictionary<string, FailureInfo>(StringComparer.Ordinal);
+            foreach (KeyValuePair<string, Dictionary<string, FailureInfo>> entry in _destinationFailures)
+                failures.Add(entry.Key, entry.Value.Values.Last());
+            return new ThreadSnapshot(new ResourceId(Board.ImageBoard.Name, Board.BoardCode, ThreadId),
+                Url, _title, DownloadDirectory, _activity, _sourceState, _requestProgress,
+                _totalMediaCount, _downloadedMedia.Count,
+                new ReadOnlyDictionary<string, FailureInfo>(failures), _lastCheckFailure, downloads);
+        }
+    }
+
+    private void SetCheckFailure(FailureInfo? failure)
+    {
+        lock (_stateLock) { _lastCheckFailure = failure; }
+        OnPropertyChanged(nameof(LastCheckFailure));
+    }
 
     public abstract IBoard Board { get; }
     public abstract string ThreadId { get; }
-
-    private string _title = "Unknown";
-    public virtual string Title
-    {
-        get => _title;
-        set
-        {
-            if (_title != value)
-            {
-                _title = value;
-                OnPropertyChanged();
-            }
-        }
-    }
-
     public abstract string NiceName { get; }
     public abstract Uri ThreadUri { get; }
+    public string Url => ThreadUri.ToString();
+    public string DownloadDirectory => StorageLayout.GetThreadDirectory(OutputDirectory, Board.ImageBoard.Name, Board.BoardCode, ThreadId);
+    protected string OutputDirectory { get; private set; } = "Downloads";
+    protected virtual TimeSpan MinimumRecheckInterval => TimeSpan.FromMilliseconds(1);
 
-    private string _status = "Pending";
+    public ThreadSourceState SourceState
+    {
+        get { lock (_stateLock) { return _sourceState; } }
+    }
+
+    public RequestPolicyProgress? RequestProgress
+    {
+        get { lock (_stateLock) { return _requestProgress; } }
+    }
+
+    /// <summary>Providers clear this in finally after request and body processing finish.</summary>
+    protected void SetRequestProgress(RequestPolicyProgress? progress)
+    {
+        lock (_stateLock)
+        {
+            if (_requestProgress == progress) return;
+            _requestProgress = progress;
+        }
+        OnPropertyChanged(nameof(RequestProgress));
+    }
+
+    public IReadOnlyDictionary<string, string> MediaFailures
+    {
+        get
+        {
+            lock (_stateLock)
+            {
+                return new Dictionary<string, string>(_mediaFailures, StringComparer.Ordinal);
+            }
+        }
+    }
+
+    public virtual string Title
+    {
+        get { lock (_stateLock) { return _title; } }
+        set
+        {
+            lock (_stateLock)
+            {
+                if (_title == value) return;
+                _title = value;
+            }
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(NiceName));
+        }
+    }
+
     public string Status
     {
-        get => _status;
-        set
+        get
         {
-            if (_status != value)
+            ThreadActivity activity = Activity;
+            return activity switch
             {
-                _status = value;
-                OnPropertyChanged();
-                Log.Information("Thread {ThreadId} status changed to: {Status}", ThreadId, _status);
-            }
+                ThreadActivity.NoMedia => "No media found",
+                ThreadActivity.NotFound => "Not found",
+                _ => activity.ToString()
+            };
         }
     }
 
-    private int _totalMediaCount;
+    public ThreadActivity Activity
+    {
+        get { lock (_stateLock) { return _activity; } }
+        set
+        {
+            if (!Enum.IsDefined(value)) throw new ArgumentOutOfRangeException(nameof(value));
+            lock (_stateLock)
+            {
+                if (_mediaFailures.Count > 0 && value is ThreadActivity.Finished or ThreadActivity.Downloading or ThreadActivity.Pending)
+                    value = ThreadActivity.Error;
+                if (_activity == value) return;
+                _activity = value;
+            }
+            OnPropertyChanged();
+            Logger.Information("Thread {ThreadId} activity changed to: {Activity}", ThreadId, value);
+        }
+    }
+
     public int TotalMediaCount
     {
-        get => _totalMediaCount;
+        get { lock (_stateLock) { return _totalMediaCount; } }
         set
         {
-            if (_totalMediaCount != value)
+            lock (_stateLock)
             {
+                if (_totalMediaCount == value) return;
                 _totalMediaCount = value;
-                OnPropertyChanged();
-                OnPropertyChanged(nameof(Progress));
             }
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(Progress));
         }
     }
 
-    public int DownloadedMediaCount => DownloadedMedia.Count;
+    public int DownloadedMediaCount
+    {
+        get { lock (_stateLock) { return _downloadedMedia.Count; } }
+    }
 
     public string Progress
     {
         get
         {
-            if (TotalMediaCount == 0)
-                return "0 / 0 (0%)";
-            double percent = (double)DownloadedMediaCount / TotalMediaCount * 100;
-            return $"{DownloadedMediaCount} / {TotalMediaCount} ({percent:0.##}%)";
+            lock (_stateLock)
+            {
+                if (_totalMediaCount == 0) return "0 / 0 (0%)";
+                double percent = (double)_downloadedMedia.Count / _totalMediaCount * 100;
+                return $"{_downloadedMedia.Count} / {_totalMediaCount} ({percent:0.##}%)";
+            }
         }
     }
 
-    public string Url => ThreadUri.ToString();
-
-    public HashSet<string> DownloadedMedia { get; set; } = new HashSet<string>();
-
-    public virtual async Task ArchiveAsync(ArchiveOptions options)
+    /// <summary>Gets a snapshot, or replaces the completed-media set with a copy.</summary>
+    public HashSet<string> DownloadedMedia
     {
-        Log.Information("Archiving thread {ThreadId} with options {Options}", ThreadId, options);
-        await Task.CompletedTask;
-    }
-
-    public virtual async Task checkThreadAsync(DownloadQueue queue)
-    {
-        Status = "Checking";
-        Log.Information("Starting recheck for thread {ThreadId}", ThreadId);
-
-        // This method is for logging purposes, and the actual checking will be done in the derived class
-        await Task.CompletedTask;
-
-        // After rechecking, if no new downloads are added, set the status back to "Finished"
-        if (DownloadedMediaCount == TotalMediaCount)
+        get
         {
-            Status = "Finished";
+            lock (_stateLock)
+            {
+                return new HashSet<string>(_downloadedMedia, StringComparer.Ordinal);
+            }
         }
-
-        Log.Information("Finished rechecking thread {ThreadId}", ThreadId);
+        set
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            HashSet<string> snapshot = new HashSet<string>(value, StringComparer.Ordinal);
+            lock (_stateLock)
+            {
+                _downloadedMedia = snapshot;
+                _verifiedDestinations.Clear();
+                foreach (string mediaIdentifier in snapshot)
+                    _verifiedDestinations[mediaIdentifier] = new HashSet<string>(DestinationComparer) { string.Empty };
+            }
+            OnPropertyChanged(nameof(DownloadedMedia));
+            OnPropertyChanged(nameof(DownloadedMediaCount));
+            OnPropertyChanged(nameof(Progress));
+        }
     }
 
-    public virtual async Task EnqueueMediaDownloadsAsync(DownloadQueue queue)
+    public void StartMonitoring(DownloadQueue queue, string outputDirectory, TimeSpan interval)
     {
-        Log.Debug("Enqueuing media downloads for thread {ThreadId}", ThreadId);
-        await Task.CompletedTask;
+        ArgumentNullException.ThrowIfNull(queue);
+        ArgumentException.ThrowIfNullOrWhiteSpace(outputDirectory);
+        if (interval.TotalMilliseconds < 1 || interval.TotalMilliseconds > uint.MaxValue - 1)
+            throw new ArgumentOutOfRangeException(nameof(interval));
+
+        lock (_monitoringLock)
+        {
+            if (_monitoringTask != null) return;
+            OutputDirectory = outputDirectory;
+            _monitoringInterval = interval;
+            CancellationTokenSource cancellation = new CancellationTokenSource();
+            CancellationToken token = cancellation.Token;
+            _monitoringCancellation = cancellation;
+            _monitoringTask = Task.Run(() => MonitorAsync(queue, token));
+        }
+    }
+
+    public void UpdateMonitoringInterval(TimeSpan interval)
+    {
+        if (interval.TotalMilliseconds < 1 || interval.TotalMilliseconds > uint.MaxValue - 1)
+            throw new ArgumentOutOfRangeException(nameof(interval));
+        lock (_monitoringLock) { _monitoringInterval = interval; }
+    }
+
+    public async Task StopMonitoringAsync()
+    {
+        Task? monitoringTask;
+        CancellationTokenSource? cancellation;
+        lock (_monitoringLock)
+        {
+            monitoringTask = _monitoringTask;
+            cancellation = _monitoringCancellation;
+        }
+        RequestStop(cancellation);
+        if (monitoringTask == null) return;
+        await monitoringTask.ConfigureAwait(false);
+        lock (_monitoringLock)
+        {
+            if (ReferenceEquals(_monitoringTask, monitoringTask))
+            {
+                _monitoringTask = null;
+                _monitoringCancellation = null;
+                cancellation?.Dispose();
+            }
+        }
+    }
+
+    private async Task MonitorAsync(DownloadQueue queue, CancellationToken cancellationToken)
+    {
+        try
+        {
+            while (!cancellationToken.IsCancellationRequested && SourceState == ThreadSourceState.Active)
+            {
+                try
+                {
+                    await checkThreadAsync(queue, cancellationToken).ConfigureAwait(false);
+                    SetCheckFailure(null);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception exception)
+                {
+                    Activity = ThreadActivity.Error;
+                    SetCheckFailure(FailureInfo.FromException(exception, media: false));
+                    Logger.Error(exception, "Error checking thread {ThreadId}", ThreadId);
+                }
+                cancellationToken.ThrowIfCancellationRequested();
+                if (SourceState != ThreadSourceState.Active) return;
+                TimeSpan interval;
+                lock (_monitoringLock) { interval = _monitoringInterval; }
+                TimeSpan minimumInterval = MinimumRecheckInterval;
+                if (interval < minimumInterval) interval = minimumInterval;
+                await WaitForNextCheckAsync(interval, cancellationToken).ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // A requested stop cancels both the provider request and the polling delay.
+        }
+        catch (Exception exception)
+        {
+            Activity = ThreadActivity.Error;
+            SetCheckFailure(FailureInfo.FromException(exception, media: false));
+            Logger.Error(exception, "Monitoring stopped unexpectedly for thread {ThreadId}", ThreadId);
+        }
+    }
+
+    protected virtual Task WaitForNextCheckAsync(TimeSpan interval, CancellationToken cancellationToken)
+    {
+        return Task.Delay(interval, cancellationToken);
+    }
+
+    /// <summary>Ends source polling after the current snapshot without stopping queued media jobs.</summary>
+    protected void MarkPollingTerminal(ThreadSourceState state)
+    {
+        if (state != ThreadSourceState.Archived && state != ThreadSourceState.NotFound)
+            throw new ArgumentOutOfRangeException(nameof(state));
+        lock (_stateLock)
+        {
+            if (_sourceState == state) return;
+            _sourceState = state;
+        }
+        OnPropertyChanged(nameof(SourceState));
+    }
+
+
+    public virtual Task checkThreadAsync(DownloadQueue queue, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(queue);
+        cancellationToken.ThrowIfCancellationRequested();
+        Activity = ThreadActivity.Checking;
+        return Task.CompletedTask;
+    }
+
+    public virtual Task EnqueueMediaDownloadsAsync(DownloadQueue queue, CancellationToken cancellationToken = default)
+    {
+        return checkThreadAsync(queue, cancellationToken);
     }
 
     public bool IsMediaDownloaded(string mediaIdentifier)
     {
-        bool isDownloaded = DownloadedMedia.Contains(mediaIdentifier);
-        Log.Debug("Media {MediaId} downloaded: {IsDownloaded}", mediaIdentifier, isDownloaded);
-        return isDownloaded;
+        lock (_stateLock) { return _downloadedMedia.Contains(mediaIdentifier); }
     }
 
-    public void MarkMediaAsDownloaded(string mediaIdentifier)
+    public void MarkMediaAsDownloaded(string mediaIdentifier, string? destinationPath = null)
     {
-        // Ensure that the media is not already in the downloaded set before adding
-        if (!DownloadedMedia.Contains(mediaIdentifier) && DownloadedMedia.Add(mediaIdentifier))
+        ArgumentNullException.ThrowIfNull(mediaIdentifier);
+        string destinationKey = GetDestinationKey(destinationPath);
+        bool mediaChanged;
+        bool failuresChanged;
+        bool statusChanged;
+        lock (_stateLock)
         {
+            if (!_verifiedDestinations.TryGetValue(mediaIdentifier, out HashSet<string>? destinations))
+            {
+                destinations = new HashSet<string>(DestinationComparer);
+                _verifiedDestinations.Add(mediaIdentifier, destinations);
+            }
+            destinations.Add(destinationKey);
+            mediaChanged = _downloadedMedia.Add(mediaIdentifier);
+            failuresChanged = _destinationFailures.TryGetValue(mediaIdentifier, out Dictionary<string, FailureInfo>? failures)
+                && failures.Remove(destinationKey);
+            if (failuresChanged) RefreshMediaFailureLocked(mediaIdentifier);
+            if (!mediaChanged && !failuresChanged) return;
+            ThreadActivity nextStatus = _activity;
+            if (_mediaFailures.Count > 0) nextStatus = ThreadActivity.Error;
+            else if (_downloadedMedia.Count == _totalMediaCount) nextStatus = ThreadActivity.Finished;
+            else if (failuresChanged && _activity == ThreadActivity.Error) nextStatus = ThreadActivity.Downloading;
+            statusChanged = _activity != nextStatus;
+            _activity = nextStatus;
+        }
+        NotifyMediaStateChanged(mediaChanged, failuresChanged, statusChanged);
+    }
+
+    public void MarkMediaPending(string mediaIdentifier, string? destinationPath = null)
+    {
+        ArgumentNullException.ThrowIfNull(mediaIdentifier);
+        string destinationKey = GetDestinationKey(destinationPath);
+        bool statusChanged;
+        lock (_stateLock)
+        {
+            if (!InvalidateDestinationLocked(mediaIdentifier, destinationKey, destinationPath == null)) return;
+            statusChanged = _activity == ThreadActivity.Finished;
+            if (statusChanged) _activity = _mediaFailures.Count > 0 ? ThreadActivity.Error : ThreadActivity.Pending;
+        }
+        NotifyMediaStateChanged(true, false, statusChanged);
+    }
+
+    public void ReportMediaFailure(string mediaIdentifier, Exception exception, string? destinationPath = null)
+    {
+        ArgumentNullException.ThrowIfNull(mediaIdentifier);
+        ArgumentNullException.ThrowIfNull(exception);
+        string destinationKey = GetDestinationKey(destinationPath);
+        bool mediaChanged;
+        bool statusChanged;
+        lock (_stateLock)
+        {
+            mediaChanged = InvalidateDestinationLocked(mediaIdentifier, destinationKey, destinationPath == null);
+            if (!_destinationFailures.TryGetValue(mediaIdentifier, out Dictionary<string, FailureInfo>? failures))
+            {
+                failures = new Dictionary<string, FailureInfo>(DestinationComparer);
+                _destinationFailures.Add(mediaIdentifier, failures);
+            }
+            failures[destinationKey] = FailureInfo.FromException(exception, media: true);
+            RefreshMediaFailureLocked(mediaIdentifier);
+            statusChanged = _activity != ThreadActivity.Error;
+            _activity = ThreadActivity.Error;
+        }
+        NotifyMediaStateChanged(mediaChanged, true, statusChanged);
+    }
+
+    // The empty key represents an old completion/failure without a known destination.
+    private static string GetDestinationKey(string? destinationPath)
+    {
+        if (destinationPath == null) return string.Empty;
+        ArgumentException.ThrowIfNullOrWhiteSpace(destinationPath);
+        return Path.GetFullPath(destinationPath);
+    }
+
+    private bool InvalidateDestinationLocked(string mediaIdentifier, string destinationKey, bool allDestinations)
+    {
+        if (!allDestinations && _verifiedDestinations.TryGetValue(mediaIdentifier, out HashSet<string>? destinations))
+        {
+            destinations.Remove(destinationKey);
+            // An unspecified old marker cannot prove that a different destination is intact.
+            destinations.Remove(string.Empty);
+            if (destinations.Count > 0) return false;
+        }
+        _verifiedDestinations.Remove(mediaIdentifier);
+        return _downloadedMedia.Remove(mediaIdentifier);
+    }
+
+    private void RefreshMediaFailureLocked(string mediaIdentifier)
+    {
+        Dictionary<string, FailureInfo> failures = _destinationFailures[mediaIdentifier];
+        if (failures.Count == 0)
+        {
+            _destinationFailures.Remove(mediaIdentifier);
+            _mediaFailures.Remove(mediaIdentifier);
+            return;
+        }
+        _mediaFailures[mediaIdentifier] = string.Join("; ", failures.Values.Select(failure => failure.Message));
+    }
+
+    private void NotifyMediaStateChanged(bool mediaChanged, bool failuresChanged, bool statusChanged)
+    {
+        if (mediaChanged)
+        {
+            OnPropertyChanged(nameof(DownloadedMedia));
             OnPropertyChanged(nameof(DownloadedMediaCount));
             OnPropertyChanged(nameof(Progress));
-
-            if (DownloadedMediaCount == TotalMediaCount)
-            {
-                Status = "Finished";
-            }
         }
-        else
-        {
-            Log.Warning("Media {MediaId} already marked as downloaded for thread {ThreadId}", mediaIdentifier, ThreadId);
-        }
+        if (failuresChanged) OnPropertyChanged(nameof(MediaFailures));
+        if (statusChanged) OnPropertyChanged(nameof(Status));
     }
 
-    public async Task LoadDownloadedMediaAsync()
-    {
-        string filePath = Path.Combine(_config.DownloadPath, Board.BoardCode, ThreadId, ".downloaded.json");
-
-        if (File.Exists(filePath))
-        {
-            try
-            {
-                string jsonContent = await File.ReadAllTextAsync(filePath);
-                HashSet<string>? downloadedMedia = JsonSerializer.Deserialize<HashSet<string>>(jsonContent);
-                if (downloadedMedia != null)
-                {
-                    DownloadedMedia = downloadedMedia;
-                }
-
-                Log.Information("Loaded downloaded media for thread {ThreadId} from {FilePath}", ThreadId, filePath);
-            }
-            catch (Exception ex)
-            {
-                Log.Error(ex, "Error loading downloaded media for thread {ThreadId} from {FilePath}", ThreadId, filePath);
-            }
-        }
-    }
-
-    public async Task SaveDownloadedMediaAsync()
-    {
-        string directoryPath = Path.Combine(_config.DownloadPath, Board.BoardCode, ThreadId);
-        string filePath = Path.Combine(directoryPath, ".downloaded.json");
-
-        try
-        {
-            if (!Directory.Exists(directoryPath))
-            {
-                Directory.CreateDirectory(directoryPath);
-            }
-
-            string jsonContent = JsonSerializer.Serialize(DownloadedMedia);
-            await File.WriteAllTextAsync(filePath, jsonContent);
-
-            Log.Information("Saved downloaded media for thread {ThreadId} to {FilePath}", ThreadId, filePath);
-        }
-        catch (Exception ex)
-        {
-            Log.Error(ex, "Error saving downloaded media for thread {ThreadId} to {FilePath}", ThreadId, filePath);
-        }
-    }
-
-    protected BaseThread()
-    {
-        _config = Config.LoadConfig(); // Load configuration
-        StartRechecking(_config.RecheckTimer); // Start rechecking with config-defined interval
-    }
-
-    public void StartRechecking(int intervalInSeconds)
-    {
-        if (_rechecker == null)
-        {
-            Log.Information("Starting immediate check for thread {ThreadId}", ThreadId);
-
-            Task.Run(async () =>
-            {
-                DownloadQueue queue = new DownloadQueue(5, 1024 * 1024); // Example queue
-                await checkThreadAsync(queue);
-            });
-
-            Log.Information("Starting rechecking for thread {ThreadId} with interval {IntervalInSeconds} seconds", ThreadId, intervalInSeconds);
-
-            _rechecker = new Rechecker(new List<IThread> { this }, intervalInSeconds);
-        }
-        else
-        {
-            Log.Warning("Rechecker already running for thread {ThreadId}", ThreadId);
-        }
-    }
-
-    public void StopRechecking()
-    {
-        if (_rechecker != null)
-        {
-            _rechecker.StopRechecking();
-            _rechecker = null;
-            Log.Information("Stopped rechecking for thread {ThreadId}", ThreadId);
-        }
-    }
-
-    public event PropertyChangedEventHandler? PropertyChanged;
-
-    protected void OnPropertyChanged([CallerMemberName] string? propertyName = null)
-    {
-        if (Dispatcher.UIThread.CheckAccess())
-        {
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
-        }
-        else
-        {
-            Dispatcher.UIThread.Post(() =>
-            {
-                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
-            });
-        }
-    }
+    protected void OnPropertyChanged([CallerMemberName] string? propertyName = null) => _propertyChanges.Signal();
 
     public void NotifyThreadRemoval(bool abort)
     {
-        Log.Information("Notifying that thread {ThreadId} should be removed, Abort: {Abort}", ThreadId, abort);
-        ThreadRemoved?.Invoke(this); // Notify whoever is subscribed to this event (UI or Registry)
+        CancellationTokenSource? cancellation;
+        lock (_monitoringLock) { cancellation = _monitoringCancellation; }
+        RequestStop(cancellation);
+        _removal.Current?.Invoke(this);
+    }
 
-        if (abort)
+    private static void RequestStop(CancellationTokenSource? cancellation)
+    {
+        try { cancellation?.Cancel(); }
+        catch (ObjectDisposedException)
         {
-            StopRechecking(); // Stop the rechecker to prevent further checks
-            Log.Information("Aborting downloads and rechecking for thread {ThreadId}", ThreadId);
+            // A concurrent stop already drained this lifetime and released its token source.
         }
     }
 }

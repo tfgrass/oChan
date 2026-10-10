@@ -13,12 +13,13 @@
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
             <TextBlock Text="oChan" FontSize="24" FontWeight="Bold" HorizontalAlignment="Center" 
                        Margin="0,0,0,10" Grid.Row="0"/>
             
-            <TextBlock Text="Version v0.6.0a (10/2024)" HorizontalAlignment="Center" 
+            <TextBlock x:Name="VersionText" HorizontalAlignment="Center" TextWrapping="Wrap"
                        Margin="0,0,0,10" Grid.Row="1"/>
 
             <TextBlock Text="oChan is an imageboard thread and board archiving tool." 
@@ -45,8 +46,11 @@
                            Tag="https://github.com/feathericons/feather" PointerPressed="OnLinkPressed"/>.
             </TextBlock>
 
-            <Button Content="Close" Width="100" HorizontalAlignment="Center" 
-                    Click="OnCloseButtonClick" Margin="20,10,0,0" Grid.Row="6"/>
+            <TextBlock Grid.Row="6" Margin="10,10,0,0" TextWrapping="Wrap"
+                       Text="oChan is licensed under the Artistic License 2.0. Dependency licenses and attributions are included in THIRD-PARTY-NOTICES.md alongside the application."/>
+
+            <Button Content="Close" Width="100" HorizontalAlignment="Center"
+                    Click="OnCloseButtonClick" Margin="20,10,0,0" Grid.Row="7"/>
         </Grid>
     </ScrollViewer>
 </Window>

@@ -1,130 +1,162 @@
-namespace oChan.Boards.FourChan;
-
 using System;
-using System.IO;
-using System.Linq;
-using System.Net.Http;
-using System.Threading.Tasks;
 using System.Collections.Generic;
-using System.Text.RegularExpressions;
+using System.Globalization;
+using System.IO;
+using System.Net;
+using System.Net.Http;
+using System.Threading;
+using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
+using oChan.Boards.Base;
 using oChan.Downloader;
 using oChan.Interfaces;
-using oChan.Boards.Base;
-using Serilog;
+using oChan.Http;
+using oChan.Storage;
+
+namespace oChan.Boards.FourChan;
 
 public class FourChanThread : BaseThread
 {
-    private readonly Config _config; // Reference to the config
+    private readonly Dictionary<string, DownloadItem> _knownMedia = new(StringComparer.Ordinal);
+    private readonly SemaphoreSlim _checkGate = new(1, 1);
+    private DateTimeOffset? _lastModified;
+    private bool _hasSnapshot;
 
     public override IBoard Board { get; }
     public override string ThreadId { get; }
-    public override string Title { get; set; }
     public override string NiceName => $"{Title} ({ThreadId})";
     public override Uri ThreadUri { get; }
+    protected override TimeSpan MinimumRecheckInterval => TimeSpan.FromSeconds(10);
 
     public FourChanThread(IBoard board, Uri threadUri)
     {
-        _config = Config.LoadConfig(); // Load the configuration
-        Log.Verbose("Initialized FourChanThread with config: {Config}", _config);
         Board = board ?? throw new ArgumentNullException(nameof(board));
-        ThreadUri = threadUri ?? throw new ArgumentNullException(nameof(threadUri));
-
-        ThreadId = ExtractThreadId(threadUri);
-        Title = "Unknown";
-        Status = "Pending";
-        Log.Information("Initialized FourChanThread with ID: {ThreadId}", ThreadId);
+        ThreadUri = FourChanImageBoard.CanonicalizeThreadUri(threadUri);
+        if (!string.Equals(Board.BoardCode, ThreadUri.Segments[1].Trim('/'), StringComparison.Ordinal))
+            throw new ArgumentException("Thread URI does not belong to the supplied board.", nameof(threadUri));
+        ThreadId = ThreadUri.Segments[3];
+        Title = $"Thread {ThreadId}";
     }
 
-    public override async Task checkThreadAsync(DownloadQueue queue)
+    public override async Task checkThreadAsync(DownloadQueue queue, CancellationToken cancellationToken = default)
     {
-        Status = "Checking";
-        await base.checkThreadAsync(queue);
-
-        Log.Debug("Enqueuing media downloads for thread {ThreadId}", ThreadId);
-
+        ArgumentNullException.ThrowIfNull(queue);
+        await _checkGate.WaitAsync(cancellationToken);
         try
         {
-            HttpClient client = Board.ImageBoard.GetHttpClient();
-            string boardCode = ((FourChanBoard)Board).BoardCode;
-            string threadJsonUrl = $"https://a.4cdn.org/{boardCode}/thread/{ThreadId}.json";
-            HttpResponseMessage response = await client.GetAsync(threadJsonUrl);
-            response.EnsureSuccessStatusCode();
-
-            string json = await response.Content.ReadAsStringAsync();
-            JObject threadData = JObject.Parse(json);
-
-            Title = threadData["posts"]?[0]?["sub"]?.ToString() ?? $"Thread {ThreadId}";
-
-            JArray posts = threadData["posts"] as JArray;
-            if (posts == null)
-            {
-                Log.Error("No 'posts' found in thread data for thread {ThreadId}", ThreadId);
-                throw new Exception("Thread data does not contain 'posts'.");
-            }
-
-            IEnumerable<dynamic> postsWithImages = posts
-                .Where(x => x["ext"] != null && x["tim"] != null && x["filename"] != null)
-                .Select(x => new
-                {
-                    Tim = x.Value<long?>("tim") ?? 0,
-                    Ext = x.Value<string>("ext") ?? string.Empty,
-                    Filename = x.Value<string>("filename") ?? "unknown"
-                });
-
-            TotalMediaCount = postsWithImages.Count();
-
-            if (TotalMediaCount > 0)
-            {
-                Status = "Downloading"; 
-            }
-
-            foreach (var post in postsWithImages)
-            {
-                if (string.IsNullOrWhiteSpace(post.Ext) || post.Tim == 0) continue;
-
-                string mediaIdentifier = post.Tim.ToString();
-
-                if (IsMediaDownloaded(mediaIdentifier) || queue.IsInQueue($"https://i.4cdn.org/{boardCode}/{post.Tim}{post.Ext}"))
-                {
-                    Log.Debug("Skipping already downloaded or enqueued media {MediaIdentifier} for thread {ThreadId}", mediaIdentifier, ThreadId);
-                    continue;
-                }
-
-                string imageUrl = $"https://i.4cdn.org/{boardCode}/{post.Tim}{post.Ext}";
-                
-                // Use the _config.DownloadPath instead of the local path
-                string destinationPath = Path.Combine(_config.DownloadPath, boardCode, ThreadId, $"{post.Filename}{post.Ext}");
-
-                DownloadItem downloadItem = new DownloadItem(new Uri(imageUrl), destinationPath, Board.ImageBoard, this, mediaIdentifier);
-                queue.EnqueueDownload(downloadItem);
-                Log.Debug("Enqueued download for image {ImageUrl}", imageUrl);
-            }
-
-            Log.Information("Recheck complete for thread {ThreadId}: Enqueued all new media downloads", ThreadId);
+            await CheckCoreAsync(queue, cancellationToken);
         }
-        catch (Exception ex)
+        finally
         {
-            Log.Error(ex, "Error enqueuing media downloads for thread {ThreadId}: {Message}", ThreadId, ex.Message);
-        }
-
-        if (DownloadedMediaCount == TotalMediaCount)
-        {
-            Status = "Finished";
+            _checkGate.Release();
         }
     }
 
-    private string ExtractThreadId(Uri threadUri)
+    private async Task CheckCoreAsync(DownloadQueue queue, CancellationToken cancellationToken)
     {
-        Match match = Regex.Match(threadUri.AbsolutePath, @"thread/(\d+)");
-        if (match.Success)
+        cancellationToken.ThrowIfCancellationRequested();
+        await base.checkThreadAsync(queue, cancellationToken);
+        if (SourceState != ThreadSourceState.Active)
         {
-            return match.Groups[1].Value;
+            EnqueueKnownMedia(queue, cancellationToken);
+            return;
         }
-        else
+        if (Board is FourChanBoard board) await board.EnsureMetadataAsync(cancellationToken);
+
+        using HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Get,
+            $"https://a.4cdn.org/{Board.BoardCode}/thread/{ThreadId}.json");
+        request.Options.Set(RequestPolicyHandler.ObserverKey, SetRequestProgress);
+        try
         {
-            Log.Error("Invalid thread URI: {ThreadUri}", threadUri);
-            throw new ArgumentException("Invalid thread URI", nameof(threadUri));
+            request.Headers.IfModifiedSince = _lastModified;
+            using HttpResponseMessage response = await Board.ImageBoard.GetHttpClient()
+                .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            if (response.StatusCode == HttpStatusCode.NotModified)
+            {
+                if (!_hasSnapshot) throw new InvalidDataException("A thread returned 304 before a successful snapshot was available.");
+                EnqueueKnownMedia(queue, cancellationToken);
+                return;
+            }
+            if (response.StatusCode == HttpStatusCode.NotFound)
+            {
+                EnqueueKnownMedia(queue, cancellationToken);
+                MarkPollingTerminal(ThreadSourceState.NotFound);
+                if (TotalMediaCount == 0 && MediaFailures.Count == 0) Activity = ThreadActivity.NotFound;
+                return;
+            }
+            response.EnsureSuccessStatusCode();
+            if (response.StatusCode != HttpStatusCode.OK)
+                throw new InvalidDataException("A thread snapshot requires a complete HTTP 200 response.");
+            JObject data = JObject.Parse(await BaseImageBoard.GetJsonReader(Board.ImageBoard).ReadAsync(response.Content, cancellationToken));
+            cancellationToken.ThrowIfCancellationRequested();
+            JArray posts = data["posts"] as JArray
+                ?? throw new InvalidDataException("Thread data does not contain posts.");
+            string? subject = posts.Count > 0 ? WebUtility.HtmlDecode(posts[0].Value<string>("sub")) : null;
+            Title = string.IsNullOrWhiteSpace(subject) ? $"Thread {ThreadId}" : subject;
+
+            Dictionary<string, DownloadItem> media = new Dictionary<string, DownloadItem>(StringComparer.Ordinal);
+            foreach (JToken post in posts)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (post.Value<int?>("filedeleted") == 1 || post["tim"] == null || post["ext"] == null || post["filename"] == null)
+                    continue;
+                long timestamp = post.Value<long>("tim");
+                string? extension = post.Value<string>("ext");
+                if (timestamp <= 0 || string.IsNullOrWhiteSpace(extension)) continue;
+                string mediaId = timestamp.ToString(CultureInfo.InvariantCulture);
+                string filename = post.Value<string>("filename") ?? "unknown";
+                string originalFileName = filename + extension;
+                Uri uri = new Uri($"https://i.4cdn.org/{Board.BoardCode}/{mediaId}{extension}");
+                string destination = StorageLayout.GetMediaPath(OutputDirectory, Board.ImageBoard.Name,
+                    Board.BoardCode, ThreadId, mediaId, extension);
+                string? legacyPath = GetLegacyPath(originalFileName);
+                media.TryAdd(mediaId, new DownloadItem(uri, destination, Board.ImageBoard, this, mediaId,
+                    expectedSize: post.Value<long?>("fsize"),
+                    expectedMd5: post.Value<string>("md5"),
+                    originalFileName: originalFileName,
+                    legacyPath: legacyPath));
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+            foreach (KeyValuePair<string, DownloadItem> item in media) _knownMedia[item.Key] = item.Value;
+            _lastModified = response.Content.Headers.LastModified;
+            _hasSnapshot = true;
+            EnqueueKnownMedia(queue, cancellationToken);
+            if (posts.Count > 0 && posts[0].Value<int?>("archived") == 1)
+                MarkPollingTerminal(ThreadSourceState.Archived);
         }
+        finally
+        {
+            SetRequestProgress(null);
+        }
+    }
+
+    private void EnqueueKnownMedia(DownloadQueue queue, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        HashSet<string> knownIds = new HashSet<string>(_knownMedia.Keys, StringComparer.Ordinal);
+        knownIds.UnionWith(DownloadedMedia);
+        TotalMediaCount = knownIds.Count;
+        Activity = MediaFailures.Count > 0 ? ThreadActivity.Error : TotalMediaCount == 0
+            ? SourceState == ThreadSourceState.NotFound ? ThreadActivity.NotFound : ThreadActivity.NoMedia
+            : ThreadActivity.Downloading;
+        foreach (DownloadItem item in _knownMedia.Values)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            queue.TryEnqueue(item);
+        }
+        cancellationToken.ThrowIfCancellationRequested();
+        if (MediaFailures.Count == 0 && TotalMediaCount > 0 && DownloadedMediaCount >= TotalMediaCount) Activity = ThreadActivity.Finished;
+    }
+
+    private string? GetLegacyPath(string originalFileName)
+    {
+        if (string.IsNullOrWhiteSpace(originalFileName) || originalFileName.Contains('/') ||
+            originalFileName.Contains('\\') || originalFileName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 ||
+            Path.IsPathRooted(originalFileName)) return null;
+        string filename = Path.GetFileName(originalFileName);
+        if (filename is "." or ".." || filename != originalFileName) return null;
+        return Path.Combine(OutputDirectory, Board.BoardCode, ThreadId, filename);
     }
 }

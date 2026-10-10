@@ -3,43 +3,45 @@
         xmlns:d="https://github.com/avaloniaui/Markup/development-tools"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:oChan"
-        xmlns:interfaces="clr-namespace:oChan.Interfaces"
         mc:Ignorable="d"
         x:Class="oChan.SettingsWindow"
         x:DataType="local:SettingsWindow"
         Title="Settings"
-        Width="330"
-        Height="330">
-    <StackPanel Margin="10" VerticalAlignment="Center">
-        <TextBlock Text="Settings" FontSize="24" FontWeight="Bold" HorizontalAlignment="Center" Margin="0,0,0,10"/>
-        
-        <!-- Download Path Setting -->
-            <TextBlock Text="Download Path:" FontSize="16" Margin="0,10,0,10" Width="250" HorizontalAlignment="Left" VerticalAlignment="Center"/>
-        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-            <TextBox Text="{Binding DownloadPath}" Width="200"/>
-            <Button Content="Browse" Width="100" Margin="10,0,0,0" Click="OnBrowseButtonClick"/>
+        Width="470"
+        Height="460"
+        MinWidth="430"
+        MinHeight="420">
+    <ScrollViewer>
+        <StackPanel Margin="20" Spacing="12">
+            <TextBlock Text="Settings" FontSize="24" FontWeight="Bold" HorizontalAlignment="Center"/>
+            <StackPanel Spacing="12" IsEnabled="{Binding !IsBusy}">
+                <TextBlock Text="Download path:"/>
+                <Grid ColumnDefinitions="*,Auto">
+                    <TextBox Text="{Binding DownloadPath, Mode=TwoWay}"/>
+                    <Button Grid.Column="1" Content="Browse" Margin="10,0,0,0" Click="OnBrowseButtonClick"/>
+                </Grid>
+                <TextBlock Text="Path changes apply to newly added threads." FontSize="12" TextWrapping="Wrap"/>
+
+                <Grid ColumnDefinitions="*,110">
+                    <TextBlock Text="Recheck timer (seconds):" VerticalAlignment="Center"/>
+                    <NumericUpDown x:Name="RecheckTimerInput" Grid.Column="1" Value="{Binding RecheckTimer, Mode=TwoWay}" Minimum="10" Maximum="4294967" Increment="1"/>
+                </Grid>
+
+                <Grid ColumnDefinitions="*,110">
+                    <TextBlock Text="Bandwidth limit (MiB/s):" VerticalAlignment="Center"/>
+                    <NumericUpDown x:Name="BandwidthInput" Grid.Column="1" Value="{Binding BandwidthLimiterMB, Mode=TwoWay}" Minimum="0" Increment="0.1"/>
+                </Grid>
+
+                <Grid ColumnDefinitions="*,110">
+                    <TextBlock Text="Parallel downloads:" VerticalAlignment="Center"/>
+                    <NumericUpDown x:Name="ParallelDownloadsInput" Grid.Column="1" Value="{Binding MaxParallelDownloads, Mode=TwoWay}" Minimum="1" Maximum="2147483647" Increment="1"/>
+                </Grid>
+
+                <CheckBox Content="Restore session on startup" IsChecked="{Binding SaveUrlsOnExit, Mode=TwoWay}"/>
+                <CheckBox Content="Minimize to tray" IsChecked="{Binding MinimizeToTray, Mode=TwoWay}"/>
+                <Button Content="Save &amp; Close" HorizontalAlignment="Center" Click="OnCloseButtonClick"/>
+            </StackPanel>
+            <TextBlock x:Name="SettingsError" Text="{Binding ErrorMessage}" IsVisible="{Binding HasError}" TextWrapping="Wrap" Foreground="Crimson"/>
         </StackPanel>
-
-        <!-- Recheck Timer Setting -->
-        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,10,0,0">
-            <TextBlock Text="Recheck Timer (seconds):" FontSize="16" Margin="0,0,10,0" Width="200" VerticalAlignment="Center"/>
-            <NumericUpDown Value="{Binding RecheckTimer}" Minimum="1" Maximum="3600" Width="100"/>
-        </StackPanel>
-
-        <!-- Bandwidth Limiter (MB/s) -->
-        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,10,0,0">
-            <TextBlock Text="Bandwidth Limiter (MB/s):" FontSize="16" Margin="0,0,10,0" Width="200" VerticalAlignment="Center"/>
-            <NumericUpDown Value="{Binding BandwidthLimiterMB}" Minimum="0.01" Maximum="1000" Increment="0.1" Width="100"/>
-        </StackPanel>
-
-        <!-- Save URLs on Exit -->
-        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,10,0,0">
-            <CheckBox Content="Save URLs on Exit" IsChecked="{Binding SaveUrlsOnExit}" Width="150" Margin="0,10,0,0"/>
-            <CheckBox Content="Minimize to Tray" IsChecked="{Binding MinimizeToTray}" Width="150" Margin="10,10,0,0"/>
-        </StackPanel>
-
-
-        <!-- Close Button -->
-        <Button Content="Save &amp; Close" Width="150" HorizontalAlignment="Center" Margin="10,20,0,0" Click="OnCloseButtonClick"/>
-    </StackPanel>
+    </ScrollViewer>
 </Window>

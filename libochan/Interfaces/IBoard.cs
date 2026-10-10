@@ -1,14 +1,17 @@
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Collections.Generic;
+using System.ComponentModel;
 using oChan.Downloader;
+using oChan.Http;
 
 namespace oChan.Interfaces
 {
     /// <summary>
     /// Represents a specific board within an imageboard platform (e.g., "/g/" on 4chan).
     /// </summary>
-    public interface IBoard
+    public interface IBoard : INotifyPropertyChanged
     {
         /// <summary>
         /// Gets the parent imageboard.
@@ -35,18 +38,16 @@ namespace oChan.Interfaces
         /// </summary>
         Uri BoardUri { get; }
 
+        /// <summary>The current HTTP admission, cooldown, or sending phase; null when no request is active.</summary>
+        RequestPolicyProgress? RequestProgress { get; }
+
         /// <summary>
         /// Fetches the threads on the board.
         /// </summary>
+        /// <param name="cancellationToken">Cancels metadata and catalog requests.</param>
         /// <returns>A task representing the asynchronous operation, containing a collection of <see cref="IThread"/> instances.</returns>
-        Task<IEnumerable<IThread>> GetThreadsAsync();
+        Task<IEnumerable<IThread>> GetThreadsAsync(CancellationToken cancellationToken = default);
 
-        /// <summary>
-        /// Archives the board content based on the provided options.
-        /// </summary>
-        /// <param name="options">The archiving options.</param>
-        /// <returns>A task representing the asynchronous operation.</returns>
-        Task ArchiveAsync(ArchiveOptions options);
 
         /// <summary>
         /// Starts monitoring the board for new threads.
@@ -54,15 +55,27 @@ namespace oChan.Interfaces
         /// <param name="intervalInSeconds">The interval in seconds between checks.</param>
         void StartMonitoring(int intervalInSeconds);
 
+        /// <summary>Changes the delay for the next waiting period without interrupting current work.</summary>
+        void UpdateMonitoringInterval(TimeSpan interval);
+
         /// <summary>
         /// Stops monitoring the board.
         /// </summary>
         void StopMonitoring();
 
         /// <summary>
-        /// Occurs when a new thread is discovered on the board.
+        /// Stops future checks, cancels the current request, suppresses late discoveries,
+        /// and awaits the current check.
         /// </summary>
-        event EventHandler<ThreadEventArgs> ThreadDiscovered;
+        Task StopMonitoringAsync();
+
+        /// <summary>
+        /// Reports each thread in a fetched catalog. The session owns admission and deduplication.
+        /// </summary>
+        IDisposable RegisterDiscoverySink(Func<IThread, CancellationToken, ValueTask> sink);
+
+        BoardSnapshot GetSnapshot(string downloadDirectory);
+        FailureInfo? LastCheckFailure { get; }
     }
 }
 

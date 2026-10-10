@@ -1,0 +1,14 @@
+<Project>
+  <PropertyGroup>
+    <Version>0.8.0</Version>
+    <OChanUsesReleaseLock Condition="'$(Configuration)' == 'Release' and ('$(MSBuildProjectName)' == 'oChan' or '$(MSBuildProjectName)' == 'libochan' or '$(MSBuildProjectName)' == 'oChan.Tests' or '$(MSBuildProjectName)' == 'oChan.DesktopTests' or '$(MSBuildProjectName)' == 'oChan.DesktopSmoke')">true</OChanUsesReleaseLock>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(OChanUsesReleaseLock)' == 'true'">
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <OChanReleaseLockRuntime>$(RuntimeIdentifier)</OChanReleaseLockRuntime>
+    <OChanReleaseLockRuntime Condition="'$(OChanReleaseLockRuntime)' == ''">$(RuntimeIdentifiers)</OChanReleaseLockRuntime>
+    <NuGetLockFilePath Condition="'$(OChanReleaseLockRuntime)' == ''">$(MSBuildProjectDirectory)/packages.release.lock.json</NuGetLockFilePath>
+    <NuGetLockFilePath Condition="'$(OChanReleaseLockRuntime)' != ''">$(MSBuildProjectDirectory)/packages.release.$(OChanReleaseLockRuntime).lock.json</NuGetLockFilePath>
+    <RestoreLockedMode Condition="'$(RestoreLockedMode)' == ''">true</RestoreLockedMode>
+  </PropertyGroup>
+</Project>

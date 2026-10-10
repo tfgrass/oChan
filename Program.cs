@@ -1,18 +1,20 @@
-﻿using Avalonia;
+using Avalonia;
 using System;
+using Serilog;
 
 namespace oChan;
 
-class Program
+internal static class Program
 {
-    // Initialization code. Don't use any Avalonia, third-party APIs or any
-    // SynchronizationContext-reliant code before AppMain is called: things aren't initialized
-    // yet and stuff might break.
     [STAThread]
-    public static void Main(string[] args) => BuildAvaloniaApp()
-        .StartWithClassicDesktopLifetime(args);
+    public static void Main(string[] args)
+    {
+        // The desktop host owns logging; constructing a library session never changes it.
+        Log.Logger = new LoggerConfiguration().MinimumLevel.Information().WriteTo.Console().CreateLogger();
+        try { BuildAvaloniaApp().StartWithClassicDesktopLifetime(args); }
+        finally { Log.CloseAndFlush(); }
+    }
 
-    // Avalonia configuration, don't remove; also used by visual designer.
     public static AppBuilder BuildAvaloniaApp()
         => AppBuilder.Configure<App>()
             .UsePlatformDetect()

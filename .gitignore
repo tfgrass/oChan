@@ -51,3 +51,11 @@ publish
 Downloads
 .vs
 roadmap.md
+
+# Local architecture sparring and implementation notes
+/docs/architecture/
+/architecture/
+
+/artifacts/
+
+__pycache__/

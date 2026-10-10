@@ -1,146 +1,257 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
+using Avalonia.Platform.Storage;
+using Avalonia.Threading;
+using Avalonia.VisualTree;
+using System;
+using System.Collections.Generic;
 using System.ComponentModel;
-using System.IO;
+using System.Threading.Tasks;
 
 namespace oChan
 {
     public partial class SettingsWindow : Window, INotifyPropertyChanged
     {
-        private Config _config;
+        private readonly Config _config;
+        private readonly Func<Config, Task>? _applySettings;
+        private string _downloadPath = string.Empty;
+        private decimal? _recheckTimer;
+        private decimal? _maxParallelDownloads;
+        private decimal? _bandwidthLimiterMB;
+        private bool _saveUrlsOnExit;
+        private bool _minimizeToTray;
+        private bool _isBusy;
+        private bool _isClosed;
+        private string? _errorMessage;
 
-        public event PropertyChangedEventHandler? PropertyChanged;
+        public new event PropertyChangedEventHandler? PropertyChanged;
 
-        public SettingsWindow(Config config)
+        public SettingsWindow() : this(new Config())
         {
-            InitializeComponent();
-            _config = config;
-            DataContext = this; // Set DataContext to the window instance
-
-            // Initialize the bindings to the config settings
-            DownloadPath = _config.DownloadPath ?? GetDefaultDownloadPath();
-            RecheckTimer = _config.RecheckTimer > 0 ? _config.RecheckTimer : 60;
-            SaveUrlsOnExit = _config.SaveUrlsOnExit;
-            MinimizeToTray = _config.MinimizeToTray;
-            BandwidthLimiterMB = _config.BandwidthLimiter > 0 ? _config.BandwidthLimiter / (1024.0 * 1024.0) : 5.0; // Default to 5 MB/s
-
-            OnPropertyChanged(nameof(DownloadPath));
-            OnPropertyChanged(nameof(RecheckTimer));
-            OnPropertyChanged(nameof(SaveUrlsOnExit));
-            OnPropertyChanged(nameof(MinimizeToTray));
-            OnPropertyChanged(nameof(BandwidthLimiterMB));
         }
 
-        // Properties for data binding
-        private string _downloadPath;
+        /// <param name="applySettings">Commits the validated candidate and applies it to the running session. When omitted, the dialog saves the candidate itself.</param>
+        public SettingsWindow(Config config, Func<Config, Task>? applySettings = null)
+        {
+            ArgumentNullException.ThrowIfNull(config);
+            InitializeComponent();
+            _config = config;
+            _applySettings = applySettings;
+            DownloadPath = config.DownloadPath;
+            RecheckTimer = config.RecheckTimer;
+            MaxParallelDownloads = config.MaxParallelDownloads;
+            SaveUrlsOnExit = config.SaveUrlsOnExit;
+            MinimizeToTray = config.MinimizeToTray;
+            BandwidthLimiterMB = config.BandwidthLimiter / (1024m * 1024m);
+            DataContext = this;
+        }
+
         public string DownloadPath
         {
             get => _downloadPath;
-            set
-            {
-                if (_downloadPath != value)
-                {
-                    _downloadPath = value;
-                    OnPropertyChanged(nameof(DownloadPath));
-                }
-            }
+            set => SetField(ref _downloadPath, value, nameof(DownloadPath));
         }
 
-        private int _recheckTimer;
-        public int RecheckTimer
+        public decimal? RecheckTimer
         {
             get => _recheckTimer;
-            set
-            {
-                if (_recheckTimer != value)
-                {
-                    _recheckTimer = value;
-                    OnPropertyChanged(nameof(RecheckTimer));
-                }
-            }
+            set => SetField(ref _recheckTimer, value, nameof(RecheckTimer));
         }
 
-        private bool _saveUrlsOnExit;
+        public decimal? MaxParallelDownloads
+        {
+            get => _maxParallelDownloads;
+            set => SetField(ref _maxParallelDownloads, value, nameof(MaxParallelDownloads));
+        }
+
+        public decimal? BandwidthLimiterMB
+        {
+            get => _bandwidthLimiterMB;
+            set => SetField(ref _bandwidthLimiterMB, value, nameof(BandwidthLimiterMB));
+        }
+
         public bool SaveUrlsOnExit
         {
             get => _saveUrlsOnExit;
-            set
-            {
-                if (_saveUrlsOnExit != value)
-                {
-                    _saveUrlsOnExit = value;
-                    OnPropertyChanged(nameof(SaveUrlsOnExit));
-                }
-            }
+            set => SetField(ref _saveUrlsOnExit, value, nameof(SaveUrlsOnExit));
         }
 
-        private bool _minimizeToTray;
         public bool MinimizeToTray
         {
             get => _minimizeToTray;
-            set
+            set => SetField(ref _minimizeToTray, value, nameof(MinimizeToTray));
+        }
+
+        public bool IsBusy
+        {
+            get => _isBusy;
+            private set => SetField(ref _isBusy, value, nameof(IsBusy));
+        }
+
+        public string? ErrorMessage
+        {
+            get => _errorMessage;
+            private set
             {
-                if (_minimizeToTray != value)
+                SetField(ref _errorMessage, value, nameof(ErrorMessage));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(HasError)));
+                if (HasError && !_isClosed && IsVisible)
                 {
-                    _minimizeToTray = value;
-                    OnPropertyChanged(nameof(MinimizeToTray));
+                    Dispatcher.UIThread.Post(() =>
+                    {
+                        if (!_isClosed && IsVisible && SettingsError.IsAttachedToVisualTree())
+                        {
+                            SettingsError.BringIntoView();
+                        }
+                    }, DispatcherPriority.Loaded);
                 }
             }
         }
 
-        private double _bandwidthLimiterMB;
-        public double BandwidthLimiterMB
+        public bool HasError => !string.IsNullOrEmpty(ErrorMessage);
+
+        protected override void OnClosing(WindowClosingEventArgs e)
         {
-            get => _bandwidthLimiterMB;
-            set
+            base.OnClosing(e);
+            if (IsBusy && e.CloseReason == WindowCloseReason.WindowClosing)
             {
-                if (_bandwidthLimiterMB != value)
-                {
-                    _bandwidthLimiterMB = value;
-                    OnPropertyChanged(nameof(BandwidthLimiterMB));
-                }
+                e.Cancel = true;
             }
         }
 
-        // Default download path
-        private string GetDefaultDownloadPath() => Path.Combine(Directory.GetCurrentDirectory(), "Downloads");
-
-        private void OnBrowseButtonClick(object sender, RoutedEventArgs e)
+        protected override void OnClosed(EventArgs e)
         {
-            // Open a file picker to choose the download path
-            var dialog = new OpenFolderDialog
-            {
-                Title = "Select Download Folder"
-            };
+            _isClosed = true;
+            base.OnClosed(e);
+        }
 
-            dialog.ShowAsync(this).ContinueWith(t =>
+        private async void OnBrowseButtonClick(object? sender, RoutedEventArgs e)
+        {
+            if (IsBusy)
             {
-                if (t.Result != null)
+                return;
+            }
+
+            IsBusy = true;
+            ErrorMessage = null;
+            try
+            {
+                if (!StorageProvider.CanPickFolder)
                 {
-                    DownloadPath = t.Result;
+                    ErrorMessage = "Folder selection is unavailable. Enter a download path instead.";
+                    return;
                 }
-            });
+
+                IReadOnlyList<IStorageFolder> folders = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+                {
+                    Title = "Select Download Folder",
+                    AllowMultiple = false
+                });
+
+                try
+                {
+                    if (folders.Count > 0)
+                    {
+                        string? selectedPath = folders[0].TryGetLocalPath();
+                        if (string.IsNullOrWhiteSpace(selectedPath))
+                        {
+                            ErrorMessage = "Choose a folder on the local file system.";
+                        }
+                        else
+                        {
+                            DownloadPath = selectedPath;
+                        }
+                    }
+                }
+                finally
+                {
+                    foreach (IStorageFolder folder in folders)
+                    {
+                        folder.Dispose();
+                    }
+                }
+            }
+            catch (Exception exception)
+            {
+                ErrorMessage = $"Could not open the folder picker: {exception.Message}";
+            }
+            finally
+            {
+                IsBusy = false;
+            }
         }
 
-        private void OnCloseButtonClick(object sender, RoutedEventArgs e)
+        private async void OnCloseButtonClick(object? sender, RoutedEventArgs e)
         {
-            // Save the settings to the config instance
-            _config.DownloadPath = DownloadPath;
-            _config.RecheckTimer = RecheckTimer;
-            _config.SaveUrlsOnExit = SaveUrlsOnExit;
-            _config.MinimizeToTray = MinimizeToTray;
-            _config.BandwidthLimiter = (long)(BandwidthLimiterMB * 1024 * 1024); // Convert MB back to bytes
+            if (IsBusy)
+            {
+                return;
+            }
 
-            // Save the config to disk
-            _config.SaveConfig();
+            IsBusy = true;
+            ErrorMessage = null;
+            try
+            {
+                if (DataValidationErrors.GetHasErrors(RecheckTimerInput) ||
+                    DataValidationErrors.GetHasErrors(BandwidthInput) ||
+                    DataValidationErrors.GetHasErrors(ParallelDownloadsInput))
+                {
+                    throw new ArgumentException("Check the highlighted settings for invalid numbers.");
+                }
 
-            // Close the window
-            Close();
+                Config candidate = _config.Clone();
+                candidate.DownloadPath = DownloadPath;
+                candidate.RecheckTimer = GetPositiveInteger(RecheckTimer, "Recheck timer");
+                candidate.MaxParallelDownloads = GetPositiveInteger(MaxParallelDownloads, "Parallel downloads");
+                candidate.SaveUrlsOnExit = SaveUrlsOnExit;
+                candidate.MinimizeToTray = MinimizeToTray;
+                if (!BandwidthLimiterMB.HasValue || BandwidthLimiterMB.Value <= 0)
+                {
+                    throw new ArgumentException("Bandwidth limit must be greater than zero.");
+                }
+
+                candidate.BandwidthLimiter = checked((long)(BandwidthLimiterMB.Value * 1024m * 1024m));
+                candidate.Validate();
+                if (_applySettings != null)
+                {
+                    await _applySettings(candidate);
+                }
+                else
+                {
+                    candidate.SaveConfig();
+                }
+
+                _config.CopyFrom(candidate);
+                IsBusy = false;
+                Close();
+            }
+            catch (Exception exception)
+            {
+                ErrorMessage = $"Could not save and apply settings: {exception.Message}";
+            }
+            finally
+            {
+                IsBusy = false;
+            }
         }
 
-        protected void OnPropertyChanged(string propertyName)
+        private static int GetPositiveInteger(decimal? value, string label)
         {
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+            if (!value.HasValue || value.Value <= 0 || value.Value > int.MaxValue || decimal.Truncate(value.Value) != value.Value)
+            {
+                throw new ArgumentException($"{label} must be a positive whole number.");
+            }
+
+            return decimal.ToInt32(value.Value);
+        }
+
+        private void SetField<T>(ref T field, T value, string propertyName)
+        {
+            if (!EqualityComparer<T>.Default.Equals(field, value))
+            {
+                field = value;
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+            }
         }
     }
 }

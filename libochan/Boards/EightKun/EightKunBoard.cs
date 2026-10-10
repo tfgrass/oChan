@@ -1,116 +1,116 @@
-namespace oChan.Boards.EightKun;
-
 using System;
-using System.Net.Http;
-using System.Threading.Tasks;
 using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
+using System.Net;
+using System.Net.Http;
+using System.Threading;
+using System.Threading.Tasks;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using oChan.Boards.Base;
 using oChan.Interfaces;
-using Serilog;
+using oChan.Http;
+
+namespace oChan.Boards.EightKun;
 
 public class EightKunBoard : BaseBoard
 {
+    private readonly SemaphoreSlim _metadataGate = new(1, 1);
+    private bool _metadataLoaded;
+    private string _name = string.Empty;
+
     public override IImageBoard ImageBoard { get; }
     public override string BoardCode { get; }
-    public override string Name { get; protected set; }  // Allow setting the Name property
+    public override string Name
+    {
+        get { lock (StateLock) { return _name; } }
+        protected set
+        {
+            lock (StateLock)
+            {
+                if (_name == value) return;
+                _name = value;
+            }
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(NiceName));
+        }
+    }
     public override string NiceName => $"/{BoardCode}/ - {Name}";
     public override Uri BoardUri { get; }
 
     public EightKunBoard(IImageBoard imageBoard, Uri boardUri)
     {
         ImageBoard = imageBoard ?? throw new ArgumentNullException(nameof(imageBoard));
-        BoardUri = boardUri ?? throw new ArgumentNullException(nameof(boardUri));
-
-        BoardCode = ExtractBoardCode(boardUri);
-        Name = BoardCode;  // Set Name initially to BoardCode
-
-        // Fetch board name asynchronously
-        Task.Run(async () => await FetchBoardNameAsync());
-
-        Log.Information("Initialized EightKunBoard for /{BoardCode}/", BoardCode);
+        BoardUri = EightKunImageBoard.CanonicalizeBoardUri(boardUri);
+        BoardCode = BoardUri.AbsolutePath.Trim('/');
+        Name = BoardCode;
     }
 
-    private async Task FetchBoardNameAsync()
+    internal async Task EnsureMetadataAsync(CancellationToken cancellationToken = default)
     {
+        await _metadataGate.WaitAsync(cancellationToken);
         try
         {
-            HttpClient client = ImageBoard.GetHttpClient();
-            string boardsUrl = "https://8kun.top/boards.json";  // Use API to get metadata for boards
-            HttpResponseMessage response = await client.GetAsync(boardsUrl);
-            response.EnsureSuccessStatusCode();
-
-            string json = await response.Content.ReadAsStringAsync();
-            JArray boardsData = JArray.Parse(json);
-
-            foreach (JToken board in boardsData)
-            {
-                if (board["uri"].ToString() == BoardCode)
-                {
-                    Name = board["title"].ToString();  // Assign the board name to the Name property
-                    Log.Information("Fetched board name: {BoardName} for /{BoardCode}/", Name, BoardCode);
-                    break;
-                }
-            }
-
-            if (Name == BoardCode)
-            {
-                Log.Warning("Board name not found for /{BoardCode}/, using BoardCode as name", BoardCode);
-            }
+            cancellationToken.ThrowIfCancellationRequested();
+            if (_metadataLoaded) return;
+            const string endpoint = "https://8kun.top/boards.json";
+            IReadOnlyDictionary<string, string> names = ImageBoard is BaseImageBoard provider
+                ? await provider.GetBoardNamesAsync(endpoint, "uri", cancellationToken: cancellationToken)
+                : await BaseImageBoard.FetchBoardNamesAsync(ImageBoard.GetHttpClient(), endpoint, "uri", cancellationToken: cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            if (names.TryGetValue(BoardCode, out string? name)) Name = WebUtility.HtmlDecode(name);
+            _metadataLoaded = true;
         }
-        catch (Exception ex)
+        catch (Exception exception) when (exception is HttpRequestException or JsonException or IOException or OperationCanceledException or TimeoutException)
         {
-            Log.Error(ex, "Error fetching board name for /{BoardCode}/", BoardCode);
+            cancellationToken.ThrowIfCancellationRequested();
+            // A display name is optional; failed metadata must not block thread downloads.
+            ImageBoard.Logger.Warning(exception, "Could not fetch the name of 8kun board /{BoardCode}/; using its board code", BoardCode);
+        }
+        finally
+        {
+            _metadataGate.Release();
         }
     }
 
-    public override async Task<IEnumerable<IThread>> GetThreadsAsync()
+    public override async Task<IEnumerable<IThread>> GetThreadsAsync(CancellationToken cancellationToken = default)
     {
-        Log.Debug("Fetching threads for board /{BoardCode}/", BoardCode);
-        List<IThread> threads = new List<IThread>();
-
+        await EnsureMetadataAsync(cancellationToken);
+        using HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Get, $"https://8kun.top/{BoardCode}/catalog.json");
+        request.Options.Set(RequestPolicyHandler.ObserverKey, SetRequestProgress);
         try
         {
-            HttpClient client = ImageBoard.GetHttpClient();
-            string catalogUrl = $"https://8kun.top/{BoardCode}/catalog.json";
-            HttpResponseMessage response = await client.GetAsync(catalogUrl);
+            using HttpResponseMessage response = await ImageBoard.GetHttpClient()
+                .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
             response.EnsureSuccessStatusCode();
-
-            string json = await response.Content.ReadAsStringAsync();
-            JArray catalogData = JArray.Parse(json);
-
-            foreach (JToken page in catalogData)
+            JArray catalog = JArray.Parse(await BaseImageBoard.GetJsonReader(ImageBoard).ReadAsync(response.Content, cancellationToken));
+            cancellationToken.ThrowIfCancellationRequested();
+            List<IThread> threads = new List<IThread>();
+            foreach (JToken page in catalog)
             {
-                foreach (JToken thread in page["threads"])
+                cancellationToken.ThrowIfCancellationRequested();
+                JArray entries = page["threads"] as JArray
+                    ?? throw new InvalidDataException("Catalog page does not contain threads.");
+                foreach (JToken entry in entries)
                 {
-                    string threadId = thread["no"].ToString();
-                    Uri threadUri = new Uri($"https://8kun.top/{BoardCode}/res/{threadId}.html");
-                    threads.Add(new EightKunThread(this, threadUri));
+                    cancellationToken.ThrowIfCancellationRequested();
+                    long id = entry.Value<long?>("no")
+                        ?? throw new InvalidDataException("Catalog thread does not contain an ID.");
+                    if (id <= 0) throw new InvalidDataException("Catalog thread ID must be positive.");
+                    string threadId = id.ToString(CultureInfo.InvariantCulture);
+                    EightKunThread thread = new EightKunThread(this, new Uri($"https://8kun.top/{BoardCode}/res/{threadId}.html"));
+                    string? subject = WebUtility.HtmlDecode(entry.Value<string>("sub"));
+                    thread.Title = string.IsNullOrWhiteSpace(subject) ? $"Thread {threadId}" : subject;
+                    threads.Add(thread);
                 }
             }
-
-            Log.Information("Fetched {ThreadCount} threads for board /{BoardCode}/", threads.Count, BoardCode);
+            cancellationToken.ThrowIfCancellationRequested();
+            return threads;
         }
-        catch (Exception ex)
+        finally
         {
-            Log.Error(ex, "Error fetching threads for board /{BoardCode}/: {Message}", BoardCode, ex.Message);
-            throw;
-        }
-
-        return threads;
-    }
-
-    private string ExtractBoardCode(Uri boardUri)
-    {
-        string[] segments = boardUri.AbsolutePath.Trim('/').Split('/');
-        if (segments.Length > 0)
-        {
-            return segments[0];
-        }
-        else
-        {
-            Log.Error("Invalid board URI: {BoardUri}", boardUri);
-            throw new ArgumentException("Invalid board URI", nameof(boardUri));
+            SetRequestProgress(null);
         }
     }
 }
