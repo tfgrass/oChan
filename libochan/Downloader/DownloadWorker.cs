@@ -72,7 +72,7 @@ public sealed class DownloadWorker
     {
         cancellationToken.ThrowIfCancellationRequested();
         using CancellationTokenSource deadline = new CancellationTokenSource(_bodyIdleTimeout, _timeProvider);
-        using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token);
+        using AsyncCancellationLink linked = new AsyncCancellationLink(cancellationToken, deadline.Token);
         Task<Stream>? opening = null;
         try
         {
@@ -81,6 +81,7 @@ public sealed class DownloadWorker
         }
         catch (OperationCanceledException exception)
         {
+            linked.RequestCancellation();
             if (opening != null)
                 _ = DisposeLateBodyAsync(opening);
             cancellationToken.ThrowIfCancellationRequested();

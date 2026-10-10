@@ -50,7 +50,7 @@ internal sealed class IdleTimeoutReadStream : Stream
     {
         cancellationToken.ThrowIfCancellationRequested();
         using CancellationTokenSource deadline = new CancellationTokenSource(_idleTimeout, _timeProvider);
-        using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token);
+        using AsyncCancellationLink linked = new AsyncCancellationLink(cancellationToken, deadline.Token);
         Task<int>? read = null;
         try
         {
@@ -66,6 +66,9 @@ internal sealed class IdleTimeoutReadStream : Stream
         }
         catch (OperationCanceledException exception)
         {
+            // WaitAsync can win before the deadline's forwarding callback.
+            // Request cancellation explicitly before this link is disposed.
+            linked.RequestCancellation();
             if (read != null)
                 _ = ObserveLateReadAsync(read);
             cancellationToken.ThrowIfCancellationRequested();

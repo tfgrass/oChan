@@ -41,7 +41,7 @@ public sealed class JsonResponseReader
         ArgumentNullException.ThrowIfNull(content);
         cancellationToken.ThrowIfCancellationRequested();
         using CancellationTokenSource totalDeadline = new CancellationTokenSource(_bodyTotalTimeout, _timeProvider);
-        using CancellationTokenSource operation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, totalDeadline.Token);
+        using AsyncCancellationLink operation = new AsyncCancellationLink(cancellationToken, totalDeadline.Token);
         try
         {
             using Stream body = await AcquireBodyAsync(content, operation.Token, totalDeadline.Token).ConfigureAwait(false);
@@ -62,6 +62,7 @@ public sealed class JsonResponseReader
             }
             catch (OperationCanceledException)
             {
+                operation.RequestCancellation();
                 _ = ObserveLateReadAsync(reading);
                 throw;
             }
@@ -82,7 +83,7 @@ public sealed class JsonResponseReader
     {
         using CancellationTokenSource idleDeadline = new CancellationTokenSource(_bodyIdleTimeout, _timeProvider);
         using CancellationTokenSource ownDeadline = CancellationTokenSource.CreateLinkedTokenSource(totalDeadlineToken, idleDeadline.Token);
-        using CancellationTokenSource acquisition = CancellationTokenSource.CreateLinkedTokenSource(operationToken, idleDeadline.Token);
+        using AsyncCancellationLink acquisition = new AsyncCancellationLink(operationToken, idleDeadline.Token);
         Task<Stream>? pending = null;
         Stream? body = null;
         try
@@ -96,6 +97,7 @@ public sealed class JsonResponseReader
         }
         catch (OperationCanceledException exception)
         {
+            acquisition.RequestCancellation();
             if (body != null)
                 body.Dispose();
             else if (pending != null)
