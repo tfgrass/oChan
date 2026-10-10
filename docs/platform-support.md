@@ -18,11 +18,11 @@ The current Linux desktop uses X11, including XWayland on a Wayland desktop. A w
 
 | Runtime identifier | Archive | Intended native validation baseline | Evidence still required |
 | --- | --- | --- | --- |
-| `win-x64` | `.zip` | Maintained Windows 11 x64 | Final package startup and desktop workflows on Windows 11. A Server 2022 CI test is useful but is not that OS test. |
-| `linux-x64` | `.tar.gz` | Ubuntu 24.04 x64 | Final extracted package; the development host's successful Manjaro desktop harness is separate evidence. |
+| `win-x64` | `.zip` | Maintained Windows 11 x64 | Final extracted-package workflows on Windows 11; the passing Server 2022 source-built harness covers a different OS and executable. |
+| `linux-x64` | `.tar.gz` | Ubuntu 24.04 x64 | Full workflows in the final extracted package on Ubuntu; source-built CI and an earlier Manjaro package startup check are recorded separately below. |
 | `linux-arm64` | `.tar.gz` | Ubuntu 24.04 Arm64 | Native Arm64 package and desktop run; x64 cross-publish is insufficient. |
 | `osx-x64` | `.tar.gz` | macOS 15 x64 | Native Intel Mac package and desktop run. |
-| `osx-arm64` | `.tar.gz` | macOS 15 Arm64 | Native Apple Silicon package and desktop run. |
+| `osx-arm64` | `.tar.gz` | macOS 15 Arm64 | Final extracted `.app` workflows and Gatekeeper behavior; the native Arm64 source-built harness has passed. |
 
 These are candidate validation baselines, not completed platform certifications. Exact supported OS releases will be recorded with the tested artifacts. Microsoft/Avalonia support policies can change with OS end-of-life; consult the linked current policy before expanding the product matrix.
 
@@ -44,7 +44,23 @@ Packaging a `.app` can be prepared without credentials. Signing/notarization and
 | Native extracted app run | Actual apphost, native dependencies, resources and normal app entrypoint run on the recorded OS/CPU. | Other OS/CPU combinations remain untested. |
 | Local NuGet package consumer | A fresh restore can consume the candidate library with no project reference or desktop dependency. | No public NuGet publication is performed. |
 
-CI attempts graphical harness runs on Windows/macOS runners and uses Xvfb on Linux. A runner without a working display must report the check as failed or unavailable; it must not silently count it as passed. A tray-absence simulation tests the application fallback contract and does not establish every desktop's tray behavior.
+CI runs the graphical harness on Windows/macOS runners and uses Xvfb with a private session bus on Linux. A runner without a working display must report the check as failed or unavailable; it must not silently count it as passed. A tray-absence simulation tests the application fallback contract and does not establish every desktop's tray behavior.
+
+## Recorded validation
+
+The three validation jobs in [GitHub Actions run 38055772655](https://github.com/tfgrass/oChan/actions/runs/38055772655) passed on 2026-10-10. The PR head was `49d994c75f7aebb75e157b3a7c4b28a61471ee62`; CI built merge checkout `2906d21da90efd579a867f7d6d2fa91bc6713a7f` with SDK 10.0.111.
+
+| Native runner | Offline tests | Packaging fixtures | Desktop harness |
+| --- | --- | --- | --- |
+| Windows Server 2022 x64 | 367 core + 39 desktop passed | 22 passed | All four modes passed |
+| Ubuntu 24.04 x64 | 367 core + 39 desktop passed | 22 passed | All four modes passed under Xvfb |
+| macOS 15 Arm64 | 367 core + 39 desktop passed | 22 passed | All four modes passed |
+
+The graphical modes are `normal`, `locked-profile`, `no-tray` and `tray-failure`. They exercise startup, bindings, state updates, settings, normal shutdown and profile/tray fallback paths in a source-built harness. These successful native UI checks do not execute the final extracted application archives or verify real provider HTTP, native clipboard/file-picker integration or every tray host.
+
+The same successful run passed the isolated NuGet consumer and produced all five desktop archives with extraction, required-file and applicable executable-permission checks; the package jobs did not launch the extracted apphosts.
+
+Separately, an earlier local `linux-x64` package from commit `10e3d7b5f0144ff98a2fd92fe38127545f798d4a` opened its main window and closed normally with exit code 0 on Manjaro x86_64 (kernel 6.18.49-1-MANJARO, glibc 2.44). The profile lock was released and extracted files were unchanged. Its archive SHA256 was `7f09c38934a08f4011ff86ab008be33a002238637010d90f1a0eb2e40cc7cb65`. This was an actual extracted apphost check with an isolated profile and different working directory, limited to startup and normal window close; no watch URLs or download/restore workflows were exercised. It is separate evidence for that earlier package.
 
 ## Final artifact acceptance record
 
@@ -57,7 +73,7 @@ For every platform promised as supported, record the source commit, SDK/runtime 
 5. Normal Exit works; unavailable/failing tray support leaves an accessible application.
 6. `LICENSE`, `README.md` and `THIRD-PARTY-NOTICES.md` accompany the complete package; Unix executable permissions survive extraction.
 
-The current local environment cannot provide native Windows or macOS evidence. Preparing workflow jobs does not mean they have run. Cross-published ARM64 or macOS artifacts remain candidates until the corresponding native evidence exists.
+The recorded source-built checks establish their stated runner coverage. Full native workflow acceptance of the final extracted package matrix remains open, including Windows 11, Linux Arm64 and both Mac architectures. Archive construction and a passing source-built harness do not complete that acceptance.
 
 ## Dependency restores and updates
 
