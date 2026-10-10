@@ -16,6 +16,7 @@ using oChan.Downloader;
 using oChan.Http;
 using oChan.Interfaces;
 using oChan.Persistence;
+using Serilog;
 
 namespace oChan.DesktopSmoke;
 
@@ -46,6 +47,9 @@ internal static class Program
         bool xvfbEnvironment = OperatingSystem.IsLinux()
             && Environment.GetEnvironmentVariable("OCHAN_DESKTOP_SMOKE_XVFB") == "1";
         SmokeLogSink sink = new SmokeLogSink();
+        Log.Logger = new LoggerConfiguration().MinimumLevel.Debug()
+            .WriteTo.Console(outputTemplate: "SMOKE APP [{Timestamp:HH:mm:ss.fff} {Level:u3}] {Message:lj}{NewLine}{Exception}")
+            .CreateLogger();
         try
         {
             Config config = new Config
@@ -56,7 +60,7 @@ internal static class Program
             };
             config.SaveConfig();
             using ProfileLease? conflictingLease = _lockedProfileMode ? ProfileLease.Acquire(profile) : null;
-            Logger.Sink = sink;
+            Avalonia.Logging.Logger.Sink = sink;
             Console.WriteLine("SMOKE isolated profile: " + profile);
             AppBuilder appBuilder = AppBuilder.Configure<App>()
                 .UsePlatformDetect()
@@ -105,6 +109,7 @@ internal static class Program
         }
         finally
         {
+            Log.CloseAndFlush();
             Directory.Delete(profile, recursive: true);
         }
     }
@@ -117,6 +122,8 @@ internal static class Program
             IClassicDesktopStyleApplicationLifetime desktop = Application.Current?.ApplicationLifetime as IClassicDesktopStyleApplicationLifetime
                 ?? throw new InvalidOperationException("Desktop lifetime was not initialized.");
             window = desktop.MainWindow ?? throw new InvalidOperationException("No startup window was created.");
+            window.Closing += (sender, e) => Console.WriteLine(
+                $"SMOKE MainWindow.Closing observed: reason={e.CloseReason}, cancel at event={e.Cancel}, owned windows={window.OwnedWindows.Count}, enabled={window.IsEnabled}.");
             window.Closed += (sender, e) =>
             {
                 _closed = true;
@@ -235,9 +242,15 @@ internal static class Program
             mainWindow.BoardsList.Remove(boardRow);
             await GridChecks.RunAsync(mainWindow, provider);
             await SettingsChecks.RunAsync(mainWindow);
+            Console.WriteLine($"SMOKE after settings: owned windows={mainWindow.OwnedWindows.Count}, enabled={mainWindow.IsEnabled}, effectively enabled={mainWindow.IsEffectivelyEnabled}.");
+            foreach (Window ownedWindow in mainWindow.OwnedWindows)
+            {
+                Console.WriteLine($"SMOKE remaining owned window: type={ownedWindow.GetType().Name}, visible={ownedWindow.IsVisible}, enabled={ownedWindow.IsEnabled}.");
+            }
             _checksPassed = true;
             Console.WriteLine("SMOKE requesting normal MainWindow.Close().");
             window.Close();
+            Console.WriteLine($"SMOKE normal MainWindow.Close() returned: closed={_closed}, visible={window.IsVisible}.");
         }
         catch (Exception exception)
         {

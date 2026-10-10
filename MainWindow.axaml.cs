@@ -486,6 +486,8 @@ public partial class MainWindow : Window
 
     protected override async void OnClosing(WindowClosingEventArgs e)
     {
+        Log.Debug("Window closing requested: reason {CloseReason}, allowed {AllowClose}, shutdown running {ShutdownRunning}, owned windows {OwnedWindowCount}.",
+            e.CloseReason, _allowClose, _shutdownRunning, OwnedWindows.Count);
         base.OnClosing(e);
         if (_allowClose)
         {
@@ -517,11 +519,16 @@ public partial class MainWindow : Window
         _isClosing = true;
         _shutdownRunning = true;
         UpdateInteractionState();
+        Log.Information("Application shutdown started.");
         try
         {
+            Log.Debug("Shutdown: waiting for session restoration.");
             await _restoreTask;
+            Log.Debug("Shutdown: restoration completed; stopping the session.");
             await _registry.StopAsync();
+            Log.Debug("Shutdown: session stopped; disposing the session.");
             await _registry.DisposeAsync();
+            Log.Debug("Shutdown: session disposed; releasing UI subscriptions.");
             _registry.StateChanged -= OnSessionChanged;
             _sessionRefresh.Dispose();
             foreach (ThreadRow row in _threadRows.Values)
@@ -537,16 +544,22 @@ public partial class MainWindow : Window
             // Detach menu subscriptions before flushing queued DBus layout updates.
             // Avalonia 11 does not cancel those Background callbacks on Dispose.
             _clipboardMenuItem = null;
+            Log.Debug("Shutdown: detaching the tray menu; tray present {TrayPresent}.", _trayIcon != null);
             if (_trayIcon != null)
             {
                 _trayIcon.Menu = null;
             }
 
+            Log.Debug("Shutdown: tray menu detached; waiting for the background dispatcher.");
             await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+            Log.Debug("Shutdown: background dispatcher completed; disposing the tray icon.");
             DisposeTrayIcon();
+            Log.Debug("Shutdown: tray disposal returned; releasing the profile lease.");
             _profileLease.Dispose();
+            Log.Debug("Shutdown: profile lease released; requesting final window close.");
             _allowClose = true;
             Close();
+            Log.Information("Application shutdown window close returned; visible {IsVisible}.", IsVisible);
             Log.CloseAndFlush();
         }
         catch (Exception exception)

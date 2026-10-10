@@ -57,6 +57,19 @@ def main() -> int:
                     exit_code = process.wait(timeout=args.timeout)
                 except subprocess.TimeoutExpired:
                     timed_out = True
+                    if sys.platform == "darwin":
+                        with (destination / "timeout-sample.log").open("w", encoding="utf-8") as diagnostic_log:
+                            try:
+                                sample = shutil.which("sample")
+                                if sample is None:
+                                    diagnostic_log.write("macOS sample tool is unavailable.\n")
+                                else:
+                                    diagnostic = subprocess.run(
+                                        [sample, str(process.pid), "3", "1", "-file", str(destination / "timeout-sample.txt")],
+                                        timeout=8, check=False, stdout=diagnostic_log, stderr=subprocess.STDOUT)
+                                    diagnostic_log.write(f"sample exit code: {diagnostic.returncode}\n")
+                            except (OSError, subprocess.TimeoutExpired) as exception:
+                                diagnostic_log.write(f"Could not collect timeout sample: {exception}\n")
                     if os.name == "nt":
                         subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"], check=False,
                                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
